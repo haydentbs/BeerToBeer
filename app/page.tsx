@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { OnboardingScreen } from '@/components/onboarding-screen'
 import { HomeScreen } from '@/components/home-screen'
 import { AppHeader } from '@/components/app-header'
@@ -11,52 +12,167 @@ import { LeaderboardScreen } from '@/components/leaderboard-screen'
 import { CrewScreen } from '@/components/crew-screen'
 import { CreateBetModal } from '@/components/create-bet-modal'
 import {
+  buildAppSession,
+  buildGuestSession,
+  clearGuestSessionCookie,
+  readGuestSessionCookie,
+  type AppSession,
+  writeGuestSessionCookie,
+} from '@/lib/auth'
+import {
+  getSupabaseBrowserClient,
+  getSupabaseConfigError,
+  isSupabaseConfigured,
+} from '@/lib/supabase-client'
+import {
   mockCrews,
   mockCrewData,
   currentUser,
   getNetPosition,
   generateCrewCode,
-  type User,
   type Crew,
 } from '@/lib/store'
 
-type AppView = 'onboarding' | 'home' | 'crew'
+type AppView = 'home' | 'crew'
 
-interface AppSession {
-  user: User
-  crewIds: string[]
-  isGuest?: boolean
+interface AuthActionResult {
+  error?: string
+  message?: string
 }
 
 export default function BeerScoreApp() {
   const [session, setSession] = useState<AppSession | null>(null)
-  const [view, setView] = useState<AppView>('onboarding')
+  const [view, setView] = useState<AppView>('home')
   const [activeCrewId, setActiveCrewId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'tonight' | 'ledger' | 'leaderboard' | 'crew'>('tonight')
   const [showCreateBet, setShowCreateBet] = useState(false)
   const [crews, setCrews] = useState<Crew[]>(mockCrews)
+  const [isAuthReady, setIsAuthReady] = useState(false)
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false)
+  const [isSigningOut, setIsSigningOut] = useState(false)
+  const [authNotice, setAuthNotice] = useState<string | null>(null)
+  const supabaseConfigured = isSupabaseConfigured()
+  const supabaseConfigError = getSupabaseConfigError()
 
-  // Check for existing session on mount
-  useEffect(() => {
-    const stored = localStorage.getItem('beerscore_session_v2')
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored)
-        setSession(parsed)
-        setView('home')
-      } catch {
-        localStorage.removeItem('beerscore_session_v2')
-      }
+  const applyAuthenticatedUser = useCallback((authUser: SupabaseUser | null) => {
+    if (!authUser) {
+      setSession(null)
+      setView('home')
+      setActiveCrewId(null)
+      return
     }
+
+    setSession(buildAppSession(authUser))
+    setView('home')
   }, [])
 
-  // Compute net positions per crew
+  useEffect(() => {
+    let isMounted = true
+    const restoreGuestSession = () => {
+      const guestSession = readGuestSessionCookie()
+
+      if (!guestSession) {
+        return false
+      }
+
+      setSession(guestSession)
+      setView('home')
+      setAuthNotice(null)
+      return true
+    }
+
+    if (!supabaseConfigured) {
+      restoreGuestSession()
+      setIsAuthReady(true)
+      return
+    }
+
+    const supabase = getSupabaseBrowserClient()
+
+    const restoreSession = async () => {
+      setIsAuthReady(false)
+
+      const {
+        data: { session: restoredSession },
+        error: sessionError,
+      } = await supabase.auth.getSession()
+
+      if (!isMounted) {
+        return
+      }
+
+      if (sessionError) {
+        setAuthNotice(sessionError.message)
+        if (!restoreGuestSession()) {
+          applyAuthenticatedUser(null)
+        }
+        setIsAuthReady(true)
+        return
+      }
+
+      if (!restoredSession?.user) {
+        if (!restoreGuestSession()) {
+          applyAuthenticatedUser(null)
+        }
+        setIsAuthReady(true)
+        return
+      }
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
+
+      if (!isMounted) {
+        return
+      }
+
+      if (userError || !user) {
+        setAuthNotice(userError?.message ?? 'Your session could not be verified. Please sign in again.')
+        await supabase.auth.signOut()
+        if (!restoreGuestSession()) {
+          applyAuthenticatedUser(null)
+        }
+        setIsAuthReady(true)
+        return
+      }
+
+      clearGuestSessionCookie()
+      applyAuthenticatedUser(user)
+      setAuthNotice(null)
+      setIsAuthReady(true)
+    }
+
+    void restoreSession()
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!isMounted) {
+        return
+      }
+
+      if (nextSession?.user) {
+        clearGuestSessionCookie()
+        applyAuthenticatedUser(nextSession.user)
+      } else if (!restoreGuestSession()) {
+        applyAuthenticatedUser(null)
+      }
+
+      setIsAuthReady(true)
+    })
+
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
+  }, [applyAuthenticatedUser, supabaseConfigured])
+
   const crewNetPositions = useMemo(() => {
     const positions: Record<string, number> = {}
     crews.forEach((crew) => {
       const data = mockCrewData[crew.id]
       if (data) {
-        // Use all-time ledger for home screen, tonight ledger for inside crew
         positions[crew.id] = getNetPosition(currentUser.id, data.allTimeLedger)
       } else {
         positions[crew.id] = 0
@@ -65,53 +181,78 @@ export default function BeerScoreApp() {
     return positions
   }, [crews])
 
-  // Get active crew data
-  const activeCrew = crews.find(c => c.id === activeCrewId)
+  const activeCrew = crews.find((crew) => crew.id === activeCrewId)
   const activeCrewData = activeCrewId ? mockCrewData[activeCrewId] : null
 
-  // --- Handlers ---
-
-  const createSession = (name: string, isGuest: boolean = true) => {
-    const user: User = {
-      id: currentUser.id,
-      name,
-      avatar: '',
-      initials: name.slice(0, 2).toUpperCase(),
+  const handleGoogleAuth = async (): Promise<AuthActionResult> => {
+    if (!supabaseConfigured) {
+      return { error: supabaseConfigError ?? 'Supabase is not configured.' }
     }
-    const sessionData: AppSession = {
-      user,
-      crewIds: crews.map(c => c.id), // For demo, auto-join all mock crews
-      isGuest,
-    }
-    localStorage.setItem('beerscore_session_v2', JSON.stringify(sessionData))
-    setSession(sessionData)
-    return sessionData
-  }
 
-  const handleGuestJoin = (name: string, crewCode?: string) => {
-    createSession(name, true)
-    if (crewCode) {
-      const existingCrew = crews.find(c => c.inviteCode === crewCode)
-      if (existingCrew) {
-        handleSelectCrew(existingCrew.id)
-        return
+    setIsAuthSubmitting(true)
+    setAuthNotice(null)
+    clearGuestSessionCookie()
+
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: typeof window === 'undefined' ? undefined : window.location.origin,
+        },
+      })
+
+      if (error) {
+        return { error: error.message }
       }
+
+      return { message: 'Redirecting to Google…' }
+    } finally {
+      setIsAuthSubmitting(false)
     }
-    setView('home')
   }
 
-  const handleSignIn = (email: string, password: string) => {
-    // In a real app, authenticate against backend
-    // For demo, just create a session with the email prefix as name
-    const name = email.split('@')[0]
-    createSession(name, false)
-    setView('home')
+  const handleGuestJoin = async (name: string, crewCode: string): Promise<AuthActionResult> => {
+    const normalizedCode = crewCode.trim().toUpperCase()
+    const matchingCrew = crews.find((crew) => crew.inviteCode === normalizedCode)
+
+    if (!matchingCrew) {
+      setView('home')
+      return { error: 'Crew code not found.' }
+    }
+
+    const guestSession = buildGuestSession(name)
+    writeGuestSessionCookie(guestSession)
+    setSession(guestSession)
+    setAuthNotice(null)
+    setActiveCrewId(matchingCrew.id)
+    setActiveTab('tonight')
+    setView('crew')
+
+    return { message: `Playing as ${guestSession.user.name} in ${matchingCrew.name}.` }
   }
 
-  const handleSignUp = (name: string, email: string, password: string) => {
-    // In a real app, create account on backend
-    createSession(name, false)
-    setView('home')
+  const handleSignOut = async () => {
+    clearGuestSessionCookie()
+
+    if (!supabaseConfigured) {
+      applyAuthenticatedUser(null)
+      return
+    }
+
+    setIsSigningOut(true)
+    setAuthNotice(null)
+
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+        setAuthNotice(error.message)
+      }
+    } finally {
+      setIsSigningOut(false)
+    }
   }
 
   const handleSelectCrew = (crewId: string) => {
@@ -134,8 +275,7 @@ export default function BeerScoreApp() {
       inviteCode: generateCrewCode(),
       pastNights: [],
     }
-    setCrews(prev => [...prev, newCrew])
-    // Also add empty crew data
+    setCrews((prev) => [...prev, newCrew])
     mockCrewData[newCrew.id] = {
       tonightLedger: [],
       allTimeLedger: [],
@@ -144,73 +284,83 @@ export default function BeerScoreApp() {
   }
 
   const handleJoinCrew = (code: string) => {
-    // In a real app this would validate the code server-side
-    // For demo, just show that it works
-    const existingCrew = crews.find(c => c.inviteCode === code)
+    const existingCrew = crews.find((crew) => crew.inviteCode === code)
     if (existingCrew) {
-      // Already in this crew
       handleSelectCrew(existingCrew.id)
     }
   }
 
   const handleLeaveCrew = () => {
     if (activeCrewId) {
-      setCrews(prev => prev.filter(c => c.id !== activeCrewId))
+      setCrews((prev) => prev.filter((crew) => crew.id !== activeCrewId))
       handleBackToHome()
     }
   }
 
-  const handleWager = (betId: string, optionId: string, drinks: number) => {
-    // In a real app, this would update the bet state
+  const handleWager = (_betId: string, _optionId: string, _drinks: number) => {
+    // Mock UI only for now.
   }
 
-  const handleCreateBet = (bet: unknown) => {
-    // In a real app, this would add the bet to the night
+  const handleCreateBet = (_bet: unknown) => {
+    // Mock UI only for now.
   }
 
-  const handleSettle = (entry: unknown) => {
-    // In a real app, this would trigger the settlement flow
+  const handleSettle = (_entry: unknown) => {
+    // Mock UI only for now.
   }
 
   const handleStartNight = () => {
-    // In a real app, this would create a new night
+    // Mock UI only for now.
   }
 
   const handleEndNight = () => {
-    // In a real app, this would close the current night
+    // Mock UI only for now.
   }
 
-  // --- Render ---
+  if (!isAuthReady) {
+    return (
+      <main className="min-h-screen bg-background px-6 py-12">
+        <div className="mx-auto flex min-h-[70vh] max-w-sm flex-col items-center justify-center text-center">
+          <div className="mb-4 h-14 w-14 animate-pulse rounded-2xl border-3 border-border bg-primary/20" />
+          <h1 className="text-2xl font-bold text-foreground">Checking your tab</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Restoring your BeerScore session and verifying it with Supabase.
+          </p>
+        </div>
+      </main>
+    )
+  }
 
-  // Onboarding
-  if (!session || view === 'onboarding') {
+  if (!session) {
     return (
       <OnboardingScreen
+        authNotice={authNotice}
+        isSubmitting={isAuthSubmitting}
+        isSupabaseConfigured={supabaseConfigured}
+        configError={supabaseConfigError}
         onGuestJoin={handleGuestJoin}
-        onSignIn={handleSignIn}
-        onSignUp={handleSignUp}
+        onGoogleAuth={handleGoogleAuth}
       />
     )
   }
 
-  // Home
   if (view === 'home' || !activeCrew) {
     return (
       <HomeScreen
         user={session.user}
+        userEmail={session.email}
         crews={crews}
         crewNetPositions={crewNetPositions}
         onSelectCrew={handleSelectCrew}
         onCreateCrew={handleCreateCrew}
         onJoinCrew={handleJoinCrew}
+        onSignOut={handleSignOut}
+        isSigningOut={isSigningOut}
       />
     )
   }
 
-  // Inside a Crew
-  const tonightNet = activeCrewData
-    ? getNetPosition(currentUser.id, activeCrewData.tonightLedger)
-    : 0
+  const tonightNet = activeCrewData ? getNetPosition(currentUser.id, activeCrewData.tonightLedger) : 0
 
   return (
     <main className="min-h-screen bg-background">
@@ -220,16 +370,16 @@ export default function BeerScoreApp() {
         nightStatus={activeCrew.currentNight?.status}
         netPosition={tonightNet}
         userName={session.user.name}
+        userEmail={session.email}
         onBack={handleBackToHome}
         onLeave={handleLeaveCrew}
+        onSignOut={handleSignOut}
+        isSigningOut={isSigningOut}
       />
 
       <div className="pt-4">
         {activeTab === 'tonight' && activeCrew.currentNight && (
-          <TonightScreen
-            night={activeCrew.currentNight}
-            onWager={handleWager}
-          />
+          <TonightScreen night={activeCrew.currentNight} onWager={handleWager} />
         )}
 
         {activeTab === 'tonight' && !activeCrew.currentNight && (
@@ -238,15 +388,15 @@ export default function BeerScoreApp() {
               <div className="w-16 h-16 rounded-full bg-surface border-2 border-border flex items-center justify-center mb-4">
                 <span className="text-2xl">🌙</span>
               </div>
-              <h3 className="font-bold text-foreground mb-2">No night active</h3>
+              <h2 className="text-xl font-bold text-foreground mb-2">No active night</h2>
               <p className="text-sm text-muted-foreground text-center max-w-xs mb-6">
-                Start a night to create bets and track drinks with your crew.
+                Start a night to begin creating bets and tracking the drinks ledger.
               </p>
               <button
                 onClick={handleStartNight}
-                className="py-3 px-8 rounded-xl bg-primary text-primary-foreground font-bold border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all"
+                className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all"
               >
-                Start a Night
+                Start tonight's tab
               </button>
             </div>
           </div>
@@ -261,25 +411,24 @@ export default function BeerScoreApp() {
         )}
 
         {activeTab === 'leaderboard' && activeCrewData && (
-          <LeaderboardScreen
-            leaderboard={activeCrewData.leaderboard}
-          />
+          <LeaderboardScreen leaderboard={activeCrewData.leaderboard} />
         )}
 
         {activeTab === 'crew' && (
-          <CrewScreen
-            crew={activeCrew}
-            onStartNight={handleStartNight}
-            onEndNight={handleEndNight}
-          />
+          <CrewScreen crew={activeCrew} onStartNight={handleStartNight} onEndNight={handleEndNight} />
         )}
       </div>
 
-      <BottomNav
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        onCreateBet={() => setShowCreateBet(true)}
-      />
+      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onCreateBet={() => setShowCreateBet(true)} />
+
+      {activeCrew.currentNight && (
+        <button
+          onClick={() => setShowCreateBet(true)}
+          className="fixed bottom-24 right-4 z-30 h-14 rounded-2xl bg-primary px-5 text-sm font-bold text-primary-foreground border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all"
+        >
+          New Bet
+        </button>
+      )}
 
       <CreateBetModal
         isOpen={showCreateBet}

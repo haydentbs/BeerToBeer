@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Bell, ArrowLeft, LogOut, User, Flame } from 'lucide-react'
+import { ArrowLeft, Bell, LogOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface AppHeaderProps {
@@ -10,11 +10,25 @@ interface AppHeaderProps {
   nightStatus?: 'active' | 'winding-down' | 'closed'
   netPosition: number
   userName?: string
+  userEmail?: string
   onBack: () => void
   onLeave?: () => void
+  onSignOut?: () => void
+  isSigningOut?: boolean
 }
 
-export function AppHeader({ crewName, nightName, nightStatus, netPosition, userName, onBack, onLeave }: AppHeaderProps) {
+export function AppHeader({
+  crewName,
+  nightName,
+  nightStatus,
+  netPosition,
+  userName,
+  userEmail,
+  onBack,
+  onLeave,
+  onSignOut,
+  isSigningOut = false,
+}: AppHeaderProps) {
   const [showMenu, setShowMenu] = useState(false)
 
   return (
@@ -71,7 +85,7 @@ export function AppHeader({ crewName, nightName, nightStatus, netPosition, userN
                 <div className="absolute right-0 top-10 z-50 w-48 bg-card rounded-xl border-2 border-border shadow-brutal p-2">
                   <div className="px-3 py-2 border-b border-border mb-2">
                     <p className="text-sm font-bold text-card-foreground">{userName}</p>
-                    <p className="text-xs text-muted-foreground">{crewName}</p>
+                    <p className="text-xs text-muted-foreground">{userEmail || crewName}</p>
                   </div>
                   {onLeave && (
                     <button
@@ -83,6 +97,19 @@ export function AppHeader({ crewName, nightName, nightStatus, netPosition, userN
                     >
                       <LogOut className="w-4 h-4" />
                       <span className="text-sm font-semibold">Leave Crew</span>
+                    </button>
+                  )}
+                  {onSignOut && (
+                    <button
+                      onClick={() => {
+                        setShowMenu(false)
+                        onSignOut()
+                      }}
+                      disabled={isSigningOut}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-surface transition-colors text-card-foreground disabled:opacity-50"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span className="text-sm font-semibold">{isSigningOut ? 'Signing out…' : 'Sign out'}</span>
                     </button>
                   )}
                 </div>

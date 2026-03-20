@@ -1,21 +1,34 @@
 'use client'
 
 import { useState } from 'react'
-import { Beer, Bell, Plus, Users, ArrowRight, ChevronRight, Trophy, Flame } from 'lucide-react'
+import { ArrowRight, Beer, Bell, ChevronRight, LogOut, Plus, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { type Crew, type User, currentUser, getNetPosition, formatDrinks, generateCrewCode } from '@/lib/store'
+import { type Crew, type User, currentUser } from '@/lib/store'
 
 interface HomeScreenProps {
   user: User
+  userEmail?: string
   crews: Crew[]
   /** Per-crew all-time ledger data for computing net positions */
   crewNetPositions: Record<string, number>
   onSelectCrew: (crewId: string) => void
   onCreateCrew: (name: string) => void
   onJoinCrew: (code: string) => void
+  onSignOut: () => void
+  isSigningOut?: boolean
 }
 
-export function HomeScreen({ user, crews, crewNetPositions, onSelectCrew, onCreateCrew, onJoinCrew }: HomeScreenProps) {
+export function HomeScreen({
+  user,
+  userEmail,
+  crews,
+  crewNetPositions,
+  onSelectCrew,
+  onCreateCrew,
+  onJoinCrew,
+  onSignOut,
+  isSigningOut = false,
+}: HomeScreenProps) {
   const [showAction, setShowAction] = useState<'none' | 'create' | 'join'>('none')
   const [newCrewName, setNewCrewName] = useState('')
   const [joinCode, setJoinCode] = useState('')
@@ -50,10 +63,21 @@ export function HomeScreen({ user, crews, crewNetPositions, onSelectCrew, onCrea
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <Beer className="w-4 h-4 text-primary-foreground" />
             </div>
-            <span className="text-lg font-bold text-foreground">BeerScore</span>
+            <div>
+              <span className="block text-lg font-bold text-foreground">BeerScore</span>
+              {userEmail && <span className="block text-xs text-muted-foreground">{userEmail}</span>}
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={onSignOut}
+              disabled={isSigningOut}
+              className="flex items-center gap-2 rounded-full border-2 border-border px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-surface disabled:opacity-50"
+            >
+              <LogOut className="h-4 w-4" />
+              {isSigningOut ? 'Signing out…' : 'Sign out'}
+            </button>
             <button className="relative p-2 rounded-full hover:bg-surface transition-colors">
               <Bell className="h-5 w-5 text-foreground" />
             </button>
