@@ -28,3 +28,22 @@
 {"timestamp":"00:21:28.006","source":"Browser","level":"LOG","message":"%c[Vercel Web Analytics]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit"}
 {"timestamp":"00:21:28.007","source":"Browser","level":"LOG","message":"%c[Vercel Web Analytics]%c Running queued event color: rgb(120, 120, 120) color: inherit pageview {\"path\":\"/\",\"route\":\"/\"}"}
 {"timestamp":"00:21:28.007","source":"Browser","level":"LOG","message":"%c[Vercel Web Analytics]%c [view] http://localhost:3000/ color: rgb(120, 120, 120) color: inherit {\"dp\":\"/\",\"o\":\"http://localhost:3000/\",\"sdkn\":\"@vercel/analytics/next\",\"sdkv\":\"1.6.1\",\"sv\":\"0.1.3\",\"ts\":1774045167859} /_vercel/insights/view"}
+{"timestamp":"00:35:35.610","source":"Server","level":"LOG","message":"✓ Compiled in 4.6s"}
+{"timestamp":"00:36:00.361","source":"Server","level":"LOG","message":"✓ Compiled in 4.1s"}
+{"timestamp":"00:36:49.112","source":"Server","level":"LOG","message":"✓ Compiled in 4.1s"}
+{"timestamp":"00:37:11.266","source":"Server","level":"LOG","message":"✓ Compiled in 4.6s"}
+{"timestamp":"00:37:18.155","source":"Browser","level":"ERROR","message":"uncaughtError: ReferenceError: handleOnboardingComplete is not defined"}
+{"timestamp":"00:37:20.684","source":"Server","level":"LOG","message":"✓ Compiled in 2.5s"}
+{"timestamp":"00:37:22.569","source":"Server","level":"WARN","message":"⚠ Fast Refresh had to perform a full reload due to a runtime error."}
+{"timestamp":"00:37:30.079","source":"Server","level":"ERROR","message":"⨯ ReferenceError: handleOnboardingComplete is not defined"}
+{"timestamp":"00:37:30.409","source":"Browser","level":"ERROR","message":"uncaughtError: ReferenceError: handleOnboardingComplete is not defined"}
+{"timestamp":"00:37:30.669","source":"Server","level":"WARN","message":"⚠ Fast Refresh had to perform a full reload due to a runtime error."}
+{"timestamp":"00:37:42.512","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"00:37:42.952","source":"Server","level":"LOG","message":"✓ Compiled in 38ms"}
+{"timestamp":"00:37:58.928","source":"Browser","level":"LOG","message":"%c[Vercel Web Analytics]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit"}
+{"timestamp":"00:37:58.928","source":"Browser","level":"LOG","message":"%c[Vercel Web Analytics]%c Running queued event color: rgb(120, 120, 120) color: inherit pageview {\"path\":\"/\",\"route\":\"/\"}"}
+{"timestamp":"00:37:58.929","source":"Browser","level":"LOG","message":"%c[Vercel Web Analytics]%c [view] http://localhost:3000/ color: rgb(120, 120, 120) color: inherit {\"dp\":\"/\",\"o\":\"http://localhost:3000/\",\"sdkn\":\"@vercel/analytics/next\",\"sdkv\":\"1.6.1\",\"sv\":\"0.1.3\",\"ts\":1774046147989} /_vercel/insights/view"}
+{"timestamp":"00:38:21.715","source":"Browser","level":"INFO","message":"%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold"}
+{"timestamp":"00:38:22.085","source":"Browser","level":"LOG","message":"%c[Vercel Web Analytics]%c Debug mode is enabled by default in development. No requests will be sent to the server. color: rgb(120, 120, 120) color: inherit"}
+{"timestamp":"00:38:22.085","source":"Browser","level":"LOG","message":"%c[Vercel Web Analytics]%c Running queued event color: rgb(120, 120, 120) color: inherit pageview {\"path\":\"/\",\"route\":\"/\"}"}
+{"timestamp":"00:38:22.085","source":"Browser","level":"LOG","message":"%c[Vercel Web Analytics]%c [view] http://localhost:3000/ color: rgb(120, 120, 120) color: inherit {\"dp\":\"/\",\"o\":\"http://localhost:3000/\",\"sdkn\":\"@vercel/analytics/next\",\"sdkv\":\"1.6.1\",\"sv\":\"0.1.3\",\"ts\":1774046182070} /_vercel/insights/view"}

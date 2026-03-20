@@ -25,6 +25,7 @@ type AppView = 'onboarding' | 'home' | 'crew'
 interface AppSession {
   user: User
   crewIds: string[]
+  isGuest?: boolean
 }
 
 export default function BeerScoreApp() {
@@ -70,7 +71,7 @@ export default function BeerScoreApp() {
 
   // --- Handlers ---
 
-  const handleOnboardingComplete = (name: string) => {
+  const createSession = (name: string, isGuest: boolean = true) => {
     const user: User = {
       id: currentUser.id,
       name,
@@ -80,9 +81,36 @@ export default function BeerScoreApp() {
     const sessionData: AppSession = {
       user,
       crewIds: crews.map(c => c.id), // For demo, auto-join all mock crews
+      isGuest,
     }
     localStorage.setItem('beerscore_session_v2', JSON.stringify(sessionData))
     setSession(sessionData)
+    return sessionData
+  }
+
+  const handleGuestJoin = (name: string, crewCode?: string) => {
+    createSession(name, true)
+    if (crewCode) {
+      const existingCrew = crews.find(c => c.inviteCode === crewCode)
+      if (existingCrew) {
+        handleSelectCrew(existingCrew.id)
+        return
+      }
+    }
+    setView('home')
+  }
+
+  const handleSignIn = (email: string, password: string) => {
+    // In a real app, authenticate against backend
+    // For demo, just create a session with the email prefix as name
+    const name = email.split('@')[0]
+    createSession(name, false)
+    setView('home')
+  }
+
+  const handleSignUp = (name: string, email: string, password: string) => {
+    // In a real app, create account on backend
+    createSession(name, false)
     setView('home')
   }
 
@@ -156,7 +184,13 @@ export default function BeerScoreApp() {
 
   // Onboarding
   if (!session || view === 'onboarding') {
-    return <OnboardingScreen onComplete={handleOnboardingComplete} />
+    return (
+      <OnboardingScreen
+        onGuestJoin={handleGuestJoin}
+        onSignIn={handleSignIn}
+        onSignUp={handleSignUp}
+      />
+    )
   }
 
   // Home

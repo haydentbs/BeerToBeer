@@ -34,22 +34,22 @@ export function LeaderboardScreen({ leaderboard }: LeaderboardScreenProps) {
       {/* Stat Switcher */}
       <div className="flex gap-2">
         {[
-          { id: 'totalWon' as const, label: 'Total Won', icon: Trophy },
-          { id: 'winRate' as const, label: 'Win Rate', icon: Target },
+          { id: 'totalWon' as const, label: 'Won', icon: Trophy },
+          { id: 'winRate' as const, label: 'Win %', icon: Target },
           { id: 'streak' as const, label: 'Streak', icon: Flame },
         ].map((s) => (
           <button
             key={s.id}
             onClick={() => setStat(s.id)}
             className={cn(
-              'flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border-2 text-sm font-semibold transition-all',
+              'flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-lg border-2 text-sm font-semibold transition-all',
               stat === s.id
                 ? 'border-primary bg-primary text-primary-foreground'
                 : 'border-border bg-surface text-foreground hover:border-primary/50'
             )}
           >
             <s.icon className="h-4 w-4" />
-            <span className="hidden sm:inline">{s.label}</span>
+            <span>{s.label}</span>
           </button>
         ))}
       </div>
@@ -64,9 +64,14 @@ export function LeaderboardScreen({ leaderboard }: LeaderboardScreenProps) {
                 {topThree[1].user.initials}
               </span>
             </div>
-            <div className="w-20 h-16 bg-card rounded-t-xl border-2 border-b-0 border-border flex flex-col items-center justify-center">
+            <div className="w-24 h-20 bg-card rounded-t-xl border-2 border-b-0 border-border flex flex-col items-center justify-center">
               <span className="text-lg font-bold text-muted-foreground">2</span>
-              <span className="text-xs text-muted-foreground">{topThree[1].user.name}</span>
+              <span className="text-xs font-semibold text-card-foreground">{topThree[1].user.name}</span>
+              <span className="text-xs font-bold text-muted-foreground">
+                {stat === 'totalWon' && `${formatDrinks(topThree[1].totalWon)} drinks`}
+                {stat === 'winRate' && `${Math.round(topThree[1].winRate * 100)}%`}
+                {stat === 'streak' && `${topThree[1].streak} nights`}
+              </span>
             </div>
           </div>
         )}
@@ -82,9 +87,9 @@ export function LeaderboardScreen({ leaderboard }: LeaderboardScreenProps) {
                 {topThree[0].user.initials}
               </span>
             </div>
-            <div className="w-24 h-20 bg-primary/20 rounded-t-xl border-2 border-b-0 border-primary flex flex-col items-center justify-center">
+            <div className="w-28 h-20 bg-primary/20 rounded-t-xl border-2 border-b-0 border-primary flex flex-col items-center justify-center">
               <span className="text-xl font-bold text-primary">1</span>
-              <span className="text-xs font-semibold text-card-foreground">{topThree[0].user.name}</span>
+              <span className="text-xs font-semibold text-foreground">{topThree[0].user.name}</span>
               <span className="text-sm font-bold text-primary">
                 {stat === 'totalWon' && `${formatDrinks(topThree[0].totalWon)} drinks`}
                 {stat === 'winRate' && `${Math.round(topThree[0].winRate * 100)}%`}
@@ -102,9 +107,14 @@ export function LeaderboardScreen({ leaderboard }: LeaderboardScreenProps) {
                 {topThree[2].user.initials}
               </span>
             </div>
-            <div className="w-18 h-12 bg-card rounded-t-xl border-2 border-b-0 border-border flex flex-col items-center justify-center px-3">
+            <div className="w-24 h-16 bg-card rounded-t-xl border-2 border-b-0 border-border flex flex-col items-center justify-center px-3">
               <span className="text-md font-bold text-muted-foreground">3</span>
-              <span className="text-xs text-muted-foreground">{topThree[2].user.name}</span>
+              <span className="text-xs font-semibold text-card-foreground">{topThree[2].user.name}</span>
+              <span className="text-xs font-bold text-muted-foreground">
+                {stat === 'totalWon' && `${formatDrinks(topThree[2].totalWon)} drinks`}
+                {stat === 'winRate' && `${Math.round(topThree[2].winRate * 100)}%`}
+                {stat === 'streak' && `${topThree[2].streak} nights`}
+              </span>
             </div>
           </div>
         )}
