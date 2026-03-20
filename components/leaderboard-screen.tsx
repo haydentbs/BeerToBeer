@@ -64,7 +64,7 @@ export function LeaderboardScreen({ leaderboard }: LeaderboardScreenProps) {
                 {topThree[1].user.initials}
               </span>
             </div>
-            <div className="w-24 h-20 bg-card rounded-t-xl border-2 border-b-0 border-border flex flex-col items-center justify-center">
+            <div className="w-24 h-20 bg-card rounded-t-xl border-2 border-b-0 border-border flex flex-col items-center justify-center gap-0.5">
               <span className="text-lg font-bold text-muted-foreground">2</span>
               <span className="text-xs font-semibold text-card-foreground">{topThree[1].user.name}</span>
               <span className="text-xs font-bold text-muted-foreground">
@@ -78,17 +78,15 @@ export function LeaderboardScreen({ leaderboard }: LeaderboardScreenProps) {
 
         {/* First Place */}
         {topThree[0] && (
-          <div className="flex flex-col items-center -mt-4">
-            <div className="text-2xl mb-1">
-              <Trophy className="h-6 w-6 text-primary" />
-            </div>
+          <div className="flex flex-col items-center -mt-5">
+            <Trophy className="h-6 w-6 text-primary mb-1" />
             <div className="w-16 h-16 rounded-full bg-primary border-3 border-border flex items-center justify-center mb-2">
               <span className="font-bold text-primary-foreground text-lg">
                 {topThree[0].user.initials}
               </span>
             </div>
-            <div className="w-28 h-20 bg-primary/20 rounded-t-xl border-2 border-b-0 border-primary flex flex-col items-center justify-center">
-              <span className="text-xl font-bold text-primary">1</span>
+            <div className="w-28 h-24 bg-primary/20 rounded-t-xl border-2 border-b-0 border-primary flex flex-col items-center justify-center gap-0.5">
+              <span className="text-2xl font-bold text-primary">1</span>
               <span className="text-xs font-semibold text-foreground">{topThree[0].user.name}</span>
               <span className="text-sm font-bold text-primary">
                 {stat === 'totalWon' && `${formatDrinks(topThree[0].totalWon)} drinks`}
@@ -107,7 +105,7 @@ export function LeaderboardScreen({ leaderboard }: LeaderboardScreenProps) {
                 {topThree[2].user.initials}
               </span>
             </div>
-            <div className="w-24 h-16 bg-card rounded-t-xl border-2 border-b-0 border-border flex flex-col items-center justify-center px-3">
+            <div className="w-24 h-16 bg-card rounded-t-xl border-2 border-b-0 border-border flex flex-col items-center justify-center px-3 gap-0.5">
               <span className="text-md font-bold text-muted-foreground">3</span>
               <span className="text-xs font-semibold text-card-foreground">{topThree[2].user.name}</span>
               <span className="text-xs font-bold text-muted-foreground">
