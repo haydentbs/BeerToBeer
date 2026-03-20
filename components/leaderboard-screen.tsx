@@ -45,7 +45,7 @@ export function LeaderboardScreen({ leaderboard }: LeaderboardScreenProps) {
               'flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border-2 text-sm font-semibold transition-all',
               stat === s.id
                 ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-border bg-surface text-card-foreground hover:border-primary/50'
+                : 'border-border bg-surface text-foreground hover:border-primary/50'
             )}
           >
             <s.icon className="h-4 w-4" />
@@ -175,7 +175,7 @@ export function LeaderboardScreen({ leaderboard }: LeaderboardScreenProps) {
             <div className="text-xs text-muted-foreground">Win rate</div>
           </div>
           <div className="p-3 rounded-lg bg-surface border border-border">
-            <div className="text-2xl font-bold text-card-foreground">
+            <div className="text-2xl font-bold text-foreground">
               {formatDrinks(leaderboard.find(e => e.user.id === currentUser.id)?.bestNight || 0)}
             </div>
             <div className="text-xs text-muted-foreground">Best night</div>

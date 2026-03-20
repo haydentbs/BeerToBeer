@@ -82,7 +82,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
             onClick={onClose}
             className="p-2 rounded-full border-2 border-border hover:bg-surface transition-colors"
           >
-            <X className="h-5 w-5 text-card-foreground" />
+            <X className="h-5 w-5 text-foreground" />
           </button>
         </div>
 
@@ -157,7 +157,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
                         'flex-1 py-2 px-3 rounded-lg border-2 text-sm font-semibold transition-all',
                         propFormat === format.id
                           ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border bg-surface text-card-foreground hover:border-primary/50'
+                          : 'border-border bg-surface text-foreground hover:border-primary/50'
                       )}
                     >
                       {format.label}
@@ -190,7 +190,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
                           {user.initials}
                         </span>
                       </div>
-                      <span className="text-sm font-medium text-card-foreground">{user.name}</span>
+                      <span className="text-sm font-medium text-foreground">{user.name}</span>
                     </button>
                   ))}
                 </div>
@@ -207,7 +207,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder={betType === 'h2h' ? 'Pool, darts, flip cup...' : 'Will Dave mention his ex?'}
-                className="w-full mt-2 px-4 py-3 rounded-xl border-2 border-border bg-surface text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none text-base"
+                className="w-full mt-2 px-4 py-3 rounded-xl border-2 border-border bg-surface text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none text-base"
               />
             </div>
 
@@ -229,7 +229,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
                           setOptions(newOptions)
                         }}
                         placeholder={`Option ${i + 1}`}
-                        className="flex-1 px-4 py-2 rounded-lg border-2 border-border bg-surface text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                        className="flex-1 px-4 py-2 rounded-lg border-2 border-border bg-surface text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                       />
                       {options.length > 2 && (
                         <button
@@ -268,7 +268,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
                       'flex-1 py-3 rounded-xl border-2 font-bold transition-all',
                       wager === amount
                         ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-border bg-surface text-card-foreground hover:border-primary/50'
+                        : 'border-border bg-surface text-foreground hover:border-primary/50'
                     )}
                   >
                     {amount}
@@ -292,7 +292,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
                       'flex-1 py-2 rounded-lg border-2 text-sm font-semibold transition-all',
                       closeTime === mins
                         ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-border bg-surface text-card-foreground hover:border-primary/50'
+                        : 'border-border bg-surface text-foreground hover:border-primary/50'
                     )}
                   >
                     {mins}m
@@ -305,7 +305,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
             <div className="flex gap-3 pt-2">
               <button
                 onClick={() => setStep(1)}
-                className="flex-1 py-3 rounded-xl border-2 border-border text-card-foreground font-semibold hover:bg-surface transition-colors"
+                className="flex-1 py-3 rounded-xl border-2 border-border text-foreground font-semibold hover:bg-surface transition-colors"
               >
                 Back
               </button>

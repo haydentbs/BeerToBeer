@@ -31,7 +31,7 @@ export function CrewScreen({ crew, onStartNight, onEndNight }: CrewScreenProps) 
             <p className="text-sm text-muted-foreground">{crew.members.length} members</p>
           </div>
           <button className="p-2 rounded-lg border-2 border-border hover:bg-surface transition-colors">
-            <Settings className="h-5 w-5 text-card-foreground" />
+            <Settings className="h-5 w-5 text-muted-foreground" />
           </button>
         </div>
 
@@ -49,7 +49,7 @@ export function CrewScreen({ crew, onStartNight, onEndNight }: CrewScreenProps) 
               {copied ? (
                 <Check className="h-5 w-5 text-win" />
               ) : (
-                <Copy className="h-5 w-5 text-card-foreground" />
+                <Copy className="h-5 w-5 text-foreground" />
               )}
             </button>
           </div>
@@ -164,7 +164,7 @@ export function CrewScreen({ crew, onStartNight, onEndNight }: CrewScreenProps) 
                   {copied ? (
                     <Check className="h-5 w-5 text-win" />
                   ) : (
-                    <Copy className="h-5 w-5 text-card-foreground" />
+                    <Copy className="h-5 w-5 text-foreground" />
                   )}
                 </button>
               </div>

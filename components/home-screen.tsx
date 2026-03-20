@@ -324,7 +324,7 @@ export function HomeScreen({ user, crews, crewNetPositions, onSelectCrew, onCrea
                   value={newCrewName}
                   onChange={(e) => setNewCrewName(e.target.value)}
                   placeholder="The Usual Suspects"
-                  className="w-full px-4 py-3 rounded-xl bg-surface text-card-foreground font-semibold border-2 border-border focus:border-primary focus:outline-none transition-colors text-lg"
+                  className="w-full px-4 py-3 rounded-xl bg-surface text-foreground font-semibold border-2 border-border focus:border-primary focus:outline-none transition-colors text-lg"
                   autoFocus
                 />
               </div>
@@ -378,7 +378,7 @@ export function HomeScreen({ user, crews, crewNetPositions, onSelectCrew, onCrea
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                   placeholder="XXXX-XX"
                   maxLength={8}
-                  className="w-full px-4 py-3 rounded-xl bg-surface text-card-foreground font-mono font-bold border-2 border-border focus:border-primary focus:outline-none transition-colors text-lg text-center tracking-widest uppercase"
+                  className="w-full px-4 py-3 rounded-xl bg-surface text-foreground font-mono font-bold border-2 border-border focus:border-primary focus:outline-none transition-colors text-lg text-center tracking-widest uppercase"
                   autoFocus
                 />
               </div>

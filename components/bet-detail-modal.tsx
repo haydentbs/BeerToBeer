@@ -61,7 +61,7 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
           onClick={onClose}
           className="absolute top-4 right-4 w-8 h-8 rounded-full bg-surface border-2 border-border flex items-center justify-center"
         >
-          <X className="w-4 h-4 text-card-foreground" />
+          <X className="w-4 h-4 text-foreground" />
         </button>
 
         <div className="px-5 pb-6">
@@ -87,7 +87,7 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
           <div className="flex items-center gap-4 mb-4">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface border-2 border-border">
               <Clock className="h-3.5 w-3.5 text-primary" />
-              <span className="text-xs font-bold text-card-foreground font-mono">{timeRemaining ?? '--:--'}</span>
+              <span className="text-xs font-bold text-foreground font-mono">{timeRemaining ?? '--:--'}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Users className="h-4 w-4 text-muted-foreground" />
@@ -129,7 +129,7 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
                   <div className="relative flex items-center justify-between">
                     <span className={cn(
                       'font-semibold',
-                      isSelected ? 'text-primary' : 'text-card-foreground'
+                      isSelected ? 'text-primary' : 'text-foreground'
                     )}>
                       {option.label}
                     </span>
@@ -184,7 +184,7 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
                           'px-4 py-2 rounded-lg border-2 font-bold text-sm transition-all',
                           wagerAmount === amount
                             ? 'border-primary bg-primary text-primary-foreground'
-                            : 'border-border bg-surface text-card-foreground'
+                            : 'border-border bg-surface text-foreground'
                         )}
                       >
                         {amount}
