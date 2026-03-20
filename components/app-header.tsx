@@ -14,10 +14,12 @@ interface AppHeaderProps {
   userName?: string
   isGuest?: boolean
   notifications?: Notification[]
+  userEmail?: string
   onBack: () => void
   onLeave?: () => void
   onSignOut?: () => void
   onMarkNotificationsRead?: () => void
+  isSigningOut?: boolean
 }
 
 export function AppHeader({
@@ -28,10 +30,12 @@ export function AppHeader({
   userName,
   isGuest,
   notifications = [],
+  userEmail,
   onBack,
   onLeave,
   onSignOut,
   onMarkNotificationsRead,
+  isSigningOut = false,
 }: AppHeaderProps) {
   const [showMenu, setShowMenu] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
@@ -108,7 +112,7 @@ export function AppHeader({
                 <div className="absolute right-0 top-10 z-50 w-48 bg-card rounded-xl border-2 border-border shadow-brutal p-2">
                   <div className="px-3 py-2 border-b border-border mb-2">
                     <p className="text-sm font-bold text-card-foreground">{userName}</p>
-                    <p className="text-xs text-muted-foreground">{crewName}</p>
+                    <p className="text-xs text-muted-foreground">{userEmail || crewName}</p>
                   </div>
 
                   <button
@@ -141,17 +145,17 @@ export function AppHeader({
                       <span className="text-sm font-semibold">Leave Crew</span>
                     </button>
                   )}
-
                   {onSignOut && (
                     <button
                       onClick={() => {
                         setShowMenu(false)
                         onSignOut()
                       }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-surface/50 transition-colors text-muted-foreground"
+                      disabled={isSigningOut}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-surface/50 transition-colors text-card-foreground disabled:opacity-50"
                     >
                       <LogOut className="w-4 h-4" />
-                      <span className="text-sm font-semibold">Sign Out</span>
+                      <span className="text-sm font-semibold">{isSigningOut ? 'Signing out…' : 'Sign out'}</span>
                     </button>
                   )}
                 </div>
