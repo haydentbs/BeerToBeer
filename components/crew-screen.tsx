@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Copy, ExternalLink, Moon, Settings, Users, Plus, Crown } from 'lucide-react'
+import { Copy, Check, ExternalLink, Moon, Settings, Users, Plus, Crown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { currentUser, type Crew } from '@/lib/store'
 
@@ -13,8 +13,13 @@ interface CrewScreenProps {
 
 export function CrewScreen({ crew, onStartNight, onEndNight }: CrewScreenProps) {
   const [showInvite, setShowInvite] = useState(false)
-  
-  const inviteCode = 'USUAL-2024'
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyCode = async () => {
+    await navigator.clipboard.writeText(crew.inviteCode)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   return (
     <div className="pb-24 px-4 space-y-6">
@@ -30,9 +35,29 @@ export function CrewScreen({ crew, onStartNight, onEndNight }: CrewScreenProps) 
           </button>
         </div>
 
+        {/* Invite Code */}
+        <div className="p-3 rounded-xl bg-surface border-2 border-border mb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Invite Code</div>
+              <span className="font-mono font-bold text-primary text-lg">{crew.inviteCode}</span>
+            </div>
+            <button
+              onClick={handleCopyCode}
+              className="p-2 rounded-lg border-2 border-border hover:bg-card transition-colors"
+            >
+              {copied ? (
+                <Check className="h-5 w-5 text-win" />
+              ) : (
+                <Copy className="h-5 w-5 text-card-foreground" />
+              )}
+            </button>
+          </div>
+        </div>
+
         {/* Night Status */}
         {crew.currentNight ? (
-          <div className="p-4 rounded-xl bg-win/10 border-2 border-win mb-4">
+          <div className="p-4 rounded-xl bg-win/10 border-2 border-win">
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-2">
@@ -75,11 +100,11 @@ export function CrewScreen({ crew, onStartNight, onEndNight }: CrewScreenProps) 
 
         <div className="bg-card rounded-xl border-2 border-border overflow-hidden">
           {crew.members.map((member, index) => {
-            const isCreator = index === 0 // Assume first member is creator
+            const isCreator = index === 0
             const isYou = member.id === currentUser.id
-            
+
             return (
-              <div 
+              <div
                 key={member.id}
                 className="flex items-center justify-between p-4 border-b border-border last:border-b-0"
               >
@@ -119,21 +144,28 @@ export function CrewScreen({ crew, onStartNight, onEndNight }: CrewScreenProps) 
       {/* Invite Modal */}
       {showInvite && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div 
+          <div
             className="absolute inset-0 bg-background/80 backdrop-blur-sm"
             onClick={() => setShowInvite(false)}
           />
           <div className="relative w-full max-w-sm bg-card rounded-2xl border-3 border-border p-6">
             <h3 className="text-lg font-bold text-card-foreground mb-4">Invite to Crew</h3>
-            
+
             <div className="p-4 rounded-xl bg-surface border-2 border-border mb-4">
               <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
                 Invite Code
               </div>
               <div className="flex items-center justify-between">
-                <span className="font-mono font-bold text-xl text-primary">{inviteCode}</span>
-                <button className="p-2 rounded-lg border-2 border-border hover:bg-card transition-colors">
-                  <Copy className="h-5 w-5 text-card-foreground" />
+                <span className="font-mono font-bold text-xl text-primary">{crew.inviteCode}</span>
+                <button
+                  onClick={handleCopyCode}
+                  className="p-2 rounded-lg border-2 border-border hover:bg-card transition-colors"
+                >
+                  {copied ? (
+                    <Check className="h-5 w-5 text-win" />
+                  ) : (
+                    <Copy className="h-5 w-5 text-card-foreground" />
+                  )}
                 </button>
               </div>
             </div>
@@ -156,35 +188,33 @@ export function CrewScreen({ crew, onStartNight, onEndNight }: CrewScreenProps) 
       )}
 
       {/* Past Nights */}
-      <div>
-        <h3 className="font-bold text-foreground uppercase tracking-wide mb-3">Recent Nights</h3>
-        <div className="space-y-3">
-          {[
-            { name: "Thursday at The Local", date: "Mar 14", bets: 8, winner: "Sarah" },
-            { name: "Saturday Game Night", date: "Mar 9", bets: 12, winner: "You" },
-            { name: "Jake's Birthday", date: "Mar 2", bets: 15, winner: "Jake" },
-          ].map((night, i) => (
-            <div 
-              key={i}
-              className="bg-card rounded-xl border-2 border-border p-4 flex items-center justify-between"
-            >
-              <div>
-                <div className="font-semibold text-card-foreground">{night.name}</div>
-                <div className="text-xs text-muted-foreground">{night.date} • {night.bets} bets</div>
-              </div>
-              <div className="text-right">
-                <div className="text-xs text-muted-foreground">Winner</div>
-                <div className={cn(
-                  'font-bold',
-                  night.winner === 'You' ? 'text-win' : 'text-card-foreground'
-                )}>
-                  {night.winner}
+      {crew.pastNights.length > 0 && (
+        <div>
+          <h3 className="font-bold text-foreground uppercase tracking-wide mb-3">Recent Nights</h3>
+          <div className="space-y-3">
+            {crew.pastNights.map((night, i) => (
+              <div
+                key={i}
+                className="bg-card rounded-xl border-2 border-border p-4 flex items-center justify-between"
+              >
+                <div>
+                  <div className="font-semibold text-card-foreground">{night.name}</div>
+                  <div className="text-xs text-muted-foreground">{night.date} · {night.bets} bets</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground">Winner</div>
+                  <div className={cn(
+                    'font-bold',
+                    night.winner === 'You' ? 'text-win' : 'text-card-foreground'
+                  )}>
+                    {night.winner}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

@@ -50,11 +50,36 @@ export interface Night {
   participants: User[]
 }
 
+export interface PastNight {
+  name: string
+  date: string
+  bets: number
+  winner: string
+}
+
 export interface Crew {
   id: string
   name: string
   members: User[]
   currentNight?: Night
+  pastNights: PastNight[]
+  inviteCode: string
+}
+
+export interface CrewSummary {
+  crew: Crew
+  netPosition: number
+  tonightLedger: LedgerEntry[]
+  allTimeLedger: LedgerEntry[]
+  leaderboard: LeaderboardEntry[]
+}
+
+export interface LeaderboardEntry {
+  user: User
+  totalWon: number
+  winRate: number
+  bestNight: number
+  streak: number
 }
 
 // Mock Users
@@ -65,6 +90,26 @@ export const mockUsers: User[] = [
   { id: '4', name: 'Mike', avatar: '/avatars/mike.jpg', initials: 'MR' },
   { id: '5', name: 'Emma', avatar: '/avatars/emma.jpg', initials: 'EB' },
   { id: '6', name: 'Dave', avatar: '/avatars/dave.jpg', initials: 'DK' },
+]
+
+// Work crew users
+export const workUsers: User[] = [
+  { id: '1', name: 'You', avatar: '/avatars/you.jpg', initials: 'ME' },
+  { id: '7', name: 'Priya', avatar: '', initials: 'PK' },
+  { id: '8', name: 'Tom', avatar: '', initials: 'TW' },
+  { id: '9', name: 'Nadia', avatar: '', initials: 'NR' },
+]
+
+// College crew users
+export const collegeUsers: User[] = [
+  { id: '1', name: 'You', avatar: '/avatars/you.jpg', initials: 'ME' },
+  { id: '10', name: 'Brody', avatar: '', initials: 'BT' },
+  { id: '11', name: 'Chase', avatar: '', initials: 'CW' },
+  { id: '12', name: 'Liam', avatar: '', initials: 'LO' },
+  { id: '13', name: 'Marcus', avatar: '', initials: 'MJ' },
+  { id: '14', name: 'Zach', avatar: '', initials: 'ZP' },
+  { id: '15', name: 'Tyler', avatar: '', initials: 'TG' },
+  { id: '16', name: 'Kai', avatar: '', initials: 'KN' },
 ]
 
 export const currentUser = mockUsers[0]
@@ -167,7 +212,7 @@ export const mockAllTimeLedger: LedgerEntry[] = [
 ]
 
 // Mock Leaderboard
-export const mockLeaderboard = [
+export const mockLeaderboard: LeaderboardEntry[] = [
   { user: mockUsers[0], totalWon: 12.4, winRate: 0.62, bestNight: 4.5, streak: 3 },
   { user: mockUsers[1], totalWon: 10.8, winRate: 0.58, bestNight: 3.8, streak: 1 },
   { user: mockUsers[2], totalWon: 8.2, winRate: 0.45, bestNight: 5.2, streak: 0 },
@@ -186,13 +231,92 @@ export const mockCurrentNight: Night = {
   participants: mockUsers,
 }
 
-// Mock Crew
-export const mockCrew: Crew = {
-  id: '1',
-  name: 'The Usual Suspects',
-  members: mockUsers,
-  currentNight: mockCurrentNight,
+// Mock Crews (multiple)
+export const mockCrews: Crew[] = [
+  {
+    id: 'crew-1',
+    name: 'The Usual Suspects',
+    members: mockUsers,
+    currentNight: mockCurrentNight,
+    inviteCode: 'USUAL-24',
+    pastNights: [
+      { name: "Thursday at The Local", date: "Mar 14", bets: 8, winner: "Sarah" },
+      { name: "Saturday Game Night", date: "Mar 9", bets: 12, winner: "You" },
+      { name: "Jake's Birthday", date: "Mar 2", bets: 15, winner: "Jake" },
+    ],
+  },
+  {
+    id: 'crew-2',
+    name: 'Work Happy Hour',
+    members: workUsers,
+    currentNight: undefined,
+    inviteCode: 'WORK-24',
+    pastNights: [
+      { name: "Friday Beers", date: "Mar 7", bets: 5, winner: "Priya" },
+      { name: "Launch Party", date: "Feb 28", bets: 9, winner: "You" },
+    ],
+  },
+  {
+    id: 'crew-3',
+    name: 'College Boys',
+    members: collegeUsers,
+    currentNight: undefined,
+    inviteCode: 'CLGB-24',
+    pastNights: [
+      { name: "Homecoming", date: "Feb 15", bets: 22, winner: "Brody" },
+      { name: "Super Bowl", date: "Feb 9", bets: 18, winner: "Marcus" },
+      { name: "New Year's", date: "Jan 1", bets: 31, winner: "You" },
+    ],
+  },
+]
+
+// Per-crew mock data
+export const mockCrewData: Record<string, {
+  tonightLedger: LedgerEntry[]
+  allTimeLedger: LedgerEntry[]
+  leaderboard: LeaderboardEntry[]
+}> = {
+  'crew-1': {
+    tonightLedger: mockTonightLedger,
+    allTimeLedger: mockAllTimeLedger,
+    leaderboard: mockLeaderboard,
+  },
+  'crew-2': {
+    tonightLedger: [],
+    allTimeLedger: [
+      { fromUser: workUsers[1], toUser: workUsers[0], drinks: 2.1, settled: 1 },
+      { fromUser: workUsers[0], toUser: workUsers[2], drinks: 1.4, settled: 1 },
+    ],
+    leaderboard: [
+      { user: workUsers[0], totalWon: 5.2, winRate: 0.55, bestNight: 3.1, streak: 0 },
+      { user: workUsers[1], totalWon: 4.8, winRate: 0.51, bestNight: 2.9, streak: 1 },
+      { user: workUsers[2], totalWon: 3.1, winRate: 0.42, bestNight: 1.8, streak: 0 },
+      { user: workUsers[3], totalWon: 2.7, winRate: 0.48, bestNight: 1.5, streak: 0 },
+    ],
+  },
+  'crew-3': {
+    tonightLedger: [],
+    allTimeLedger: [
+      { fromUser: collegeUsers[1], toUser: collegeUsers[0], drinks: 6.3, settled: 4 },
+      { fromUser: collegeUsers[0], toUser: collegeUsers[2], drinks: 3.8, settled: 2 },
+      { fromUser: collegeUsers[3], toUser: collegeUsers[0], drinks: 4.1, settled: 3 },
+      { fromUser: collegeUsers[0], toUser: collegeUsers[4], drinks: 2.5, settled: 1 },
+    ],
+    leaderboard: [
+      { user: collegeUsers[1], totalWon: 18.5, winRate: 0.61, bestNight: 7.2, streak: 2 },
+      { user: collegeUsers[0], totalWon: 15.3, winRate: 0.55, bestNight: 5.8, streak: 0 },
+      { user: collegeUsers[4], totalWon: 14.1, winRate: 0.52, bestNight: 6.1, streak: 1 },
+      { user: collegeUsers[2], totalWon: 11.7, winRate: 0.48, bestNight: 4.3, streak: 0 },
+      { user: collegeUsers[3], totalWon: 10.2, winRate: 0.45, bestNight: 3.9, streak: 0 },
+      { user: collegeUsers[5], totalWon: 8.8, winRate: 0.42, bestNight: 3.2, streak: 0 },
+      { user: collegeUsers[6], totalWon: 6.4, winRate: 0.38, bestNight: 2.8, streak: 0 },
+      { user: collegeUsers[7], totalWon: 4.9, winRate: 0.35, bestNight: 2.1, streak: 0 },
+    ],
+  },
 }
+
+// Backward-compatible single crew references
+export const mockCrew: Crew = mockCrews[0]
 
 // Utility functions
 export function formatDrinks(drinks: number): string {
@@ -205,25 +329,25 @@ export function formatDrinks(drinks: number): string {
 export function getTimeRemaining(date: Date): string {
   const diff = date.getTime() - Date.now()
   if (diff <= 0) return 'Closed'
-  
+
   const minutes = Math.floor(diff / (1000 * 60))
   const seconds = Math.floor((diff % (1000 * 60)) / 1000)
-  
+
   if (minutes > 60) {
     const hours = Math.floor(minutes / 60)
     return `${hours}h ${minutes % 60}m`
   }
-  
+
   if (minutes > 0) {
     return `${minutes}m ${seconds}s`
   }
-  
+
   return `${seconds}s`
 }
 
 export function getNetPosition(userId: string, ledger: LedgerEntry[]): number {
   let net = 0
-  
+
   for (const entry of ledger) {
     if (entry.toUser.id === userId) {
       net += (entry.drinks - entry.settled)
@@ -232,7 +356,7 @@ export function getNetPosition(userId: string, ledger: LedgerEntry[]): number {
       net -= (entry.drinks - entry.settled)
     }
   }
-  
+
   return net
 }
 

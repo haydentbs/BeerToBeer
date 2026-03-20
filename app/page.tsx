@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { LandingPage } from '@/components/landing-page'
+import { useState, useEffect, useMemo } from 'react'
+import { OnboardingScreen } from '@/components/onboarding-screen'
+import { HomeScreen } from '@/components/home-screen'
 import { AppHeader } from '@/components/app-header'
 import { BottomNav } from '@/components/bottom-nav'
 import { TonightScreen } from '@/components/tonight-screen'
@@ -9,78 +10,127 @@ import { LedgerScreen } from '@/components/ledger-screen'
 import { LeaderboardScreen } from '@/components/leaderboard-screen'
 import { CrewScreen } from '@/components/crew-screen'
 import { CreateBetModal } from '@/components/create-bet-modal'
-import { 
-  mockCurrentNight, 
-  mockTonightLedger, 
-  mockAllTimeLedger, 
-  mockLeaderboard, 
-  mockCrew,
-  mockUsers,
+import {
+  mockCrews,
+  mockCrewData,
+  currentUser,
   getNetPosition,
   generateCrewCode,
-  type User
+  type User,
+  type Crew,
 } from '@/lib/store'
 
-interface SessionData {
+type AppView = 'onboarding' | 'home' | 'crew'
+
+interface AppSession {
   user: User
-  crewCode: string
+  crewIds: string[]
 }
 
 export default function BeerScoreApp() {
-  const [session, setSession] = useState<SessionData | null>(null)
+  const [session, setSession] = useState<AppSession | null>(null)
+  const [view, setView] = useState<AppView>('onboarding')
+  const [activeCrewId, setActiveCrewId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'tonight' | 'ledger' | 'leaderboard' | 'crew'>('tonight')
   const [showCreateBet, setShowCreateBet] = useState(false)
-  const [night, setNight] = useState(mockCurrentNight)
-  const [crew, setCrew] = useState(mockCrew)
+  const [crews, setCrews] = useState<Crew[]>(mockCrews)
 
   // Check for existing session on mount
   useEffect(() => {
-    const stored = localStorage.getItem('beerscore_session')
+    const stored = localStorage.getItem('beerscore_session_v2')
     if (stored) {
       try {
-        setSession(JSON.parse(stored))
+        const parsed = JSON.parse(stored)
+        setSession(parsed)
+        setView('home')
       } catch {
-        localStorage.removeItem('beerscore_session')
+        localStorage.removeItem('beerscore_session_v2')
       }
     }
   }, [])
 
-  const handleJoin = (name: string, crewCode: string) => {
-    const newUser: User = {
-      id: Date.now().toString(),
+  // Compute net positions per crew
+  const crewNetPositions = useMemo(() => {
+    const positions: Record<string, number> = {}
+    crews.forEach((crew) => {
+      const data = mockCrewData[crew.id]
+      if (data) {
+        // Use all-time ledger for home screen, tonight ledger for inside crew
+        positions[crew.id] = getNetPosition(currentUser.id, data.allTimeLedger)
+      } else {
+        positions[crew.id] = 0
+      }
+    })
+    return positions
+  }, [crews])
+
+  // Get active crew data
+  const activeCrew = crews.find(c => c.id === activeCrewId)
+  const activeCrewData = activeCrewId ? mockCrewData[activeCrewId] : null
+
+  // --- Handlers ---
+
+  const handleOnboardingComplete = (name: string) => {
+    const user: User = {
+      id: currentUser.id,
       name,
       avatar: '',
-      initials: name.slice(0, 2).toUpperCase()
+      initials: name.slice(0, 2).toUpperCase(),
     }
-    const sessionData = { user: newUser, crewCode }
-    localStorage.setItem('beerscore_session', JSON.stringify(sessionData))
+    const sessionData: AppSession = {
+      user,
+      crewIds: crews.map(c => c.id), // For demo, auto-join all mock crews
+    }
+    localStorage.setItem('beerscore_session_v2', JSON.stringify(sessionData))
     setSession(sessionData)
+    setView('home')
   }
 
-  const handleCreate = (name: string) => {
-    const newUser: User = {
-      id: Date.now().toString(),
+  const handleSelectCrew = (crewId: string) => {
+    setActiveCrewId(crewId)
+    setActiveTab('tonight')
+    setView('crew')
+  }
+
+  const handleBackToHome = () => {
+    setActiveCrewId(null)
+    setView('home')
+  }
+
+  const handleCreateCrew = (name: string) => {
+    const newCrew: Crew = {
+      id: `crew-${Date.now()}`,
       name,
-      avatar: '',
-      initials: name.slice(0, 2).toUpperCase()
+      members: [session?.user ?? currentUser],
+      currentNight: undefined,
+      inviteCode: generateCrewCode(),
+      pastNights: [],
     }
-    const crewCode = generateCrewCode()
-    const sessionData = { user: newUser, crewCode }
-    localStorage.setItem('beerscore_session', JSON.stringify(sessionData))
-    setSession(sessionData)
+    setCrews(prev => [...prev, newCrew])
+    // Also add empty crew data
+    mockCrewData[newCrew.id] = {
+      tonightLedger: [],
+      allTimeLedger: [],
+      leaderboard: [{ user: session?.user ?? currentUser, totalWon: 0, winRate: 0, bestNight: 0, streak: 0 }],
+    }
   }
 
-  const handleLeave = () => {
-    localStorage.removeItem('beerscore_session')
-    setSession(null)
+  const handleJoinCrew = (code: string) => {
+    // In a real app this would validate the code server-side
+    // For demo, just show that it works
+    const existingCrew = crews.find(c => c.inviteCode === code)
+    if (existingCrew) {
+      // Already in this crew
+      handleSelectCrew(existingCrew.id)
+    }
   }
 
-  // Show landing page if not in session
-  if (!session) {
-    return <LandingPage onJoin={handleJoin} onCreate={handleCreate} />
+  const handleLeaveCrew = () => {
+    if (activeCrewId) {
+      setCrews(prev => prev.filter(c => c.id !== activeCrewId))
+      handleBackToHome()
+    }
   }
-
-  const netPosition = getNetPosition(session.user.id, mockTonightLedger)
 
   const handleWager = (betId: string, optionId: string, drinks: number) => {
     // In a real app, this would update the bet state
@@ -102,55 +152,102 @@ export default function BeerScoreApp() {
     // In a real app, this would close the current night
   }
 
+  // --- Render ---
+
+  // Onboarding
+  if (!session || view === 'onboarding') {
+    return <OnboardingScreen onComplete={handleOnboardingComplete} />
+  }
+
+  // Home
+  if (view === 'home' || !activeCrew) {
+    return (
+      <HomeScreen
+        user={session.user}
+        crews={crews}
+        crewNetPositions={crewNetPositions}
+        onSelectCrew={handleSelectCrew}
+        onCreateCrew={handleCreateCrew}
+        onJoinCrew={handleJoinCrew}
+      />
+    )
+  }
+
+  // Inside a Crew
+  const tonightNet = activeCrewData
+    ? getNetPosition(currentUser.id, activeCrewData.tonightLedger)
+    : 0
+
   return (
     <main className="min-h-screen bg-background">
-      <AppHeader 
-        nightName={night?.name}
-        nightStatus={night?.status}
-        netPosition={netPosition}
+      <AppHeader
+        crewName={activeCrew.name}
+        nightName={activeCrew.currentNight?.name}
+        nightStatus={activeCrew.currentNight?.status}
+        netPosition={tonightNet}
         userName={session.user.name}
-        crewCode={session.crewCode}
-        onLeave={handleLeave}
+        onBack={handleBackToHome}
+        onLeave={handleLeaveCrew}
       />
 
       <div className="pt-4">
-        {activeTab === 'tonight' && (
-          <TonightScreen 
-            night={night} 
+        {activeTab === 'tonight' && activeCrew.currentNight && (
+          <TonightScreen
+            night={activeCrew.currentNight}
             onWager={handleWager}
           />
         )}
-        
-        {activeTab === 'ledger' && (
-          <LedgerScreen 
-            tonightLedger={mockTonightLedger}
-            allTimeLedger={mockAllTimeLedger}
+
+        {activeTab === 'tonight' && !activeCrew.currentNight && (
+          <div className="pb-24 px-4">
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="w-16 h-16 rounded-full bg-surface border-2 border-border flex items-center justify-center mb-4">
+                <span className="text-2xl">🌙</span>
+              </div>
+              <h3 className="font-bold text-foreground mb-2">No night active</h3>
+              <p className="text-sm text-muted-foreground text-center max-w-xs mb-6">
+                Start a night to create bets and track drinks with your crew.
+              </p>
+              <button
+                onClick={handleStartNight}
+                className="py-3 px-8 rounded-xl bg-primary text-primary-foreground font-bold border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all"
+              >
+                Start a Night
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'ledger' && activeCrewData && (
+          <LedgerScreen
+            tonightLedger={activeCrewData.tonightLedger}
+            allTimeLedger={activeCrewData.allTimeLedger}
             onSettle={handleSettle}
           />
         )}
-        
-        {activeTab === 'leaderboard' && (
-          <LeaderboardScreen 
-            leaderboard={mockLeaderboard}
+
+        {activeTab === 'leaderboard' && activeCrewData && (
+          <LeaderboardScreen
+            leaderboard={activeCrewData.leaderboard}
           />
         )}
-        
+
         {activeTab === 'crew' && (
-          <CrewScreen 
-            crew={crew}
+          <CrewScreen
+            crew={activeCrew}
             onStartNight={handleStartNight}
             onEndNight={handleEndNight}
           />
         )}
       </div>
 
-      <BottomNav 
+      <BottomNav
         activeTab={activeTab}
         onTabChange={setActiveTab}
         onCreateBet={() => setShowCreateBet(true)}
       />
 
-      <CreateBetModal 
+      <CreateBetModal
         isOpen={showCreateBet}
         onClose={() => setShowCreateBet(false)}
         onCreate={handleCreateBet}
