@@ -69,7 +69,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
       />
       
       {/* Modal */}
-      <div className="relative w-full max-w-lg bg-card border-t-3 border-x-3 border-border rounded-t-3xl max-h-[85vh] overflow-y-auto safe-area-bottom mb-16">
+      <div className="relative w-full max-w-lg bg-card border-t-3 border-x-3 border-border rounded-t-3xl max-h-[85vh] overflow-y-auto safe-area-bottom">
         {/* Handle */}
         <div className="sticky top-0 flex justify-center py-3 bg-card">
           <div className="w-10 h-1 rounded-full bg-border" />
@@ -78,9 +78,9 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
         {/* Header */}
         <div className="flex items-center justify-between px-4 pb-4">
           <h2 className="text-xl font-bold text-card-foreground">Create Bet</h2>
-          <button 
+          <button
             onClick={onClose}
-            className="p-2 rounded-full border-2 border-border hover:bg-surface transition-colors"
+            className="p-2 rounded-full border-2 border-border bg-surface hover:bg-surface/70 transition-colors"
           >
             <X className="h-5 w-5 text-foreground" />
           </button>
