@@ -69,7 +69,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
       />
       
       {/* Modal */}
-      <div className="relative w-full max-w-lg bg-card border-t-3 border-x-3 border-border rounded-t-3xl max-h-[85vh] overflow-y-auto safe-area-bottom">
+      <div className="relative w-full max-w-lg bg-card border-t-3 border-x-3 border-border rounded-t-3xl max-h-[85vh] overflow-y-auto safe-area-bottom mb-16">
         {/* Handle */}
         <div className="sticky top-0 flex justify-center py-3 bg-card">
           <div className="w-10 h-1 rounded-full bg-border" />
@@ -106,7 +106,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
                     <HelpCircle className="h-6 w-6 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-card-foreground">Prop Bet</h3>
+                    <h3 className="font-bold text-foreground">Prop Bet</h3>
                     <p className="text-sm text-muted-foreground">Anyone can wager</p>
                   </div>
                 </div>
@@ -126,7 +126,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
                     <Swords className="h-6 w-6 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-card-foreground">Challenge</h3>
+                    <h3 className="font-bold text-foreground">Challenge</h3>
                     <p className="text-sm text-muted-foreground">1v1 with side bets</p>
                   </div>
                 </div>

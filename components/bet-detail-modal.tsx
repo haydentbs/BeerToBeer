@@ -50,7 +50,7 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-lg bg-card rounded-t-3xl border-t-3 border-x-3 border-border safe-area-bottom animate-in slide-in-from-bottom duration-300">
+      <div className="relative w-full max-w-lg bg-card rounded-t-3xl border-t-3 border-x-3 border-border safe-area-bottom animate-in slide-in-from-bottom duration-300 mb-16">
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-2">
           <div className="w-12 h-1.5 rounded-full bg-border" />

@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Bell, ArrowLeft, LogOut, User, Flame } from 'lucide-react'
+import { Bell, ArrowLeft, LogOut, User, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { NotificationPanel } from './notification-panel'
+import type { Notification } from '@/lib/store'
 
 interface AppHeaderProps {
   crewName: string
@@ -10,12 +12,31 @@ interface AppHeaderProps {
   nightStatus?: 'active' | 'winding-down' | 'closed'
   netPosition: number
   userName?: string
+  isGuest?: boolean
+  notifications?: Notification[]
   onBack: () => void
   onLeave?: () => void
+  onSignOut?: () => void
+  onMarkNotificationsRead?: () => void
 }
 
-export function AppHeader({ crewName, nightName, nightStatus, netPosition, userName, onBack, onLeave }: AppHeaderProps) {
+export function AppHeader({
+  crewName,
+  nightName,
+  nightStatus,
+  netPosition,
+  userName,
+  isGuest,
+  notifications = [],
+  onBack,
+  onLeave,
+  onSignOut,
+  onMarkNotificationsRead,
+}: AppHeaderProps) {
   const [showMenu, setShowMenu] = useState(false)
+  const [showNotifications, setShowNotifications] = useState(false)
+
+  const unreadCount = notifications.filter(n => !n.read).length
 
   return (
     <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b-3 border-border safe-area-top">
@@ -35,7 +56,7 @@ export function AppHeader({ crewName, nightName, nightStatus, netPosition, userN
         <div className="flex items-center gap-2 shrink-0">
           <div
             className={cn(
-              'px-3 py-1.5 rounded-full border-2 font-bold text-sm',
+              'px-3 py-1.5 rounded-full border-2 font-bold text-sm flex items-center gap-1',
               netPosition > 0
                 ? 'bg-win/20 border-win text-win'
                 : netPosition < 0
@@ -43,13 +64,29 @@ export function AppHeader({ crewName, nightName, nightStatus, netPosition, userN
                 : 'bg-muted border-border text-muted-foreground'
             )}
           >
-            {netPosition > 0 ? '+' : ''}{netPosition.toFixed(1)}
+            <span>{netPosition > 0 ? '+' : ''}{netPosition.toFixed(1)}</span>
+            <span className="text-xs">🍺</span>
           </div>
 
-          <button className="relative p-2 rounded-full hover:bg-surface transition-colors">
-            <Bell className="h-5 w-5 text-foreground" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
-          </button>
+          {/* Notification Bell */}
+          <div className="relative">
+            <button
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="relative p-2 rounded-full hover:bg-surface transition-colors"
+            >
+              <Bell className="h-5 w-5 text-foreground" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
+              )}
+            </button>
+
+            <NotificationPanel
+              notifications={notifications}
+              isOpen={showNotifications}
+              onClose={() => setShowNotifications(false)}
+              onMarkAllRead={() => onMarkNotificationsRead?.()}
+            />
+          </div>
 
           {/* User Menu */}
           <div className="relative">
@@ -73,16 +110,48 @@ export function AppHeader({ crewName, nightName, nightStatus, netPosition, userN
                     <p className="text-sm font-bold text-card-foreground">{userName}</p>
                     <p className="text-xs text-muted-foreground">{crewName}</p>
                   </div>
+
+                  <button
+                    onClick={() => setShowMenu(false)}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-surface/50 transition-colors text-card-foreground"
+                  >
+                    <User className="w-4 h-4" />
+                    <span className="text-sm font-semibold">Profile</span>
+                  </button>
+
+                  {isGuest && (
+                    <button
+                      onClick={() => setShowMenu(false)}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-surface/50 transition-colors text-primary"
+                    >
+                      <Settings className="w-4 h-4" />
+                      <span className="text-sm font-semibold">Finish Account</span>
+                    </button>
+                  )}
+
                   {onLeave && (
                     <button
                       onClick={() => {
                         setShowMenu(false)
                         onLeave()
                       }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-surface transition-colors text-loss"
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-surface/50 transition-colors text-loss"
                     >
                       <LogOut className="w-4 h-4" />
                       <span className="text-sm font-semibold">Leave Crew</span>
+                    </button>
+                  )}
+
+                  {onSignOut && (
+                    <button
+                      onClick={() => {
+                        setShowMenu(false)
+                        onSignOut()
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-surface/50 transition-colors text-muted-foreground"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span className="text-sm font-semibold">Sign Out</span>
                     </button>
                   )}
                 </div>

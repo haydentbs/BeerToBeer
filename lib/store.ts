@@ -193,6 +193,37 @@ export const mockBets: Bet[] = [
     ],
     totalPool: 2.5,
   },
+  {
+    id: '4',
+    type: 'h2h',
+    title: 'Darts showdown',
+    creator: mockUsers[1],
+    challenger: mockUsers[3],
+    status: 'resolved',
+    closesAt: new Date(Date.now() - 1000 * 60 * 30),
+    createdAt: new Date(Date.now() - 1000 * 60 * 90),
+    options: [
+      { id: 'sarah', label: 'Sarah wins', wagers: [{ user: mockUsers[1], drinks: 2 }, { user: mockUsers[4], drinks: 1 }], totalDrinks: 3 },
+      { id: 'mike', label: 'Mike wins', wagers: [{ user: mockUsers[3], drinks: 2 }], totalDrinks: 2 },
+    ],
+    totalPool: 5,
+    result: 'sarah',
+  },
+  {
+    id: '5',
+    type: 'prop',
+    title: 'Will someone get kicked out?',
+    creator: mockUsers[5],
+    status: 'resolved',
+    closesAt: new Date(Date.now() - 1000 * 60 * 45),
+    createdAt: new Date(Date.now() - 1000 * 60 * 120),
+    options: [
+      { id: 'yes', label: 'Yes', wagers: [{ user: mockUsers[0], drinks: 1 }, { user: mockUsers[2], drinks: 0.5 }], totalDrinks: 1.5 },
+      { id: 'no', label: 'No', wagers: [{ user: mockUsers[5], drinks: 2 }], totalDrinks: 2 },
+    ],
+    totalPool: 3.5,
+    result: 'no',
+  },
 ]
 
 // Mock Ledger Data (tonight)
@@ -369,4 +400,33 @@ export interface Session {
 
 export function generateCrewCode(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase()
+}
+
+// Notifications
+export interface Notification {
+  id: string
+  type: 'bet_created' | 'bet_resolved' | 'challenge' | 'crew_invite' | 'night_started'
+  title: string
+  message: string
+  crewName: string
+  timestamp: Date
+  read: boolean
+}
+
+export const mockNotifications: Notification[] = [
+  { id: 'n1', type: 'bet_resolved', title: 'Darts showdown settled', message: 'Sarah won! You earned 1.5 drinks', crewName: 'The Usual Suspects', timestamp: new Date(Date.now() - 1000 * 60 * 5), read: false },
+  { id: 'n2', type: 'challenge', title: 'Jake challenged you!', message: 'Pool match - 2 drinks on the line', crewName: 'The Usual Suspects', timestamp: new Date(Date.now() - 1000 * 60 * 15), read: false },
+  { id: 'n3', type: 'night_started', title: 'Night started!', message: "Friday at O'Malley's is live", crewName: 'The Usual Suspects', timestamp: new Date(Date.now() - 1000 * 60 * 90), read: true },
+  { id: 'n4', type: 'bet_created', title: 'New bet created', message: 'Will Dave mention his ex?', crewName: 'The Usual Suspects', timestamp: new Date(Date.now() - 1000 * 60 * 20), read: true },
+]
+
+export function formatRelativeTime(date: Date): string {
+  const diff = Date.now() - date.getTime()
+  const minutes = Math.floor(diff / (1000 * 60))
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
 }

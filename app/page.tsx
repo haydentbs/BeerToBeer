@@ -13,11 +13,13 @@ import { CreateBetModal } from '@/components/create-bet-modal'
 import {
   mockCrews,
   mockCrewData,
+  mockNotifications,
   currentUser,
   getNetPosition,
   generateCrewCode,
   type User,
   type Crew,
+  type Notification,
 } from '@/lib/store'
 
 type AppView = 'onboarding' | 'home' | 'crew'
@@ -35,6 +37,7 @@ export default function BeerScoreApp() {
   const [activeTab, setActiveTab] = useState<'tonight' | 'ledger' | 'leaderboard' | 'crew'>('tonight')
   const [showCreateBet, setShowCreateBet] = useState(false)
   const [crews, setCrews] = useState<Crew[]>(mockCrews)
+  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications)
 
   // Check for existing session on mount
   useEffect(() => {
@@ -180,6 +183,17 @@ export default function BeerScoreApp() {
     // In a real app, this would close the current night
   }
 
+  const handleSignOut = () => {
+    localStorage.removeItem('beerscore_session_v2')
+    setSession(null)
+    setView('onboarding')
+    setActiveCrewId(null)
+  }
+
+  const handleMarkNotificationsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+  }
+
   // --- Render ---
 
   // Onboarding
@@ -220,8 +234,12 @@ export default function BeerScoreApp() {
         nightStatus={activeCrew.currentNight?.status}
         netPosition={tonightNet}
         userName={session.user.name}
+        isGuest={session.isGuest}
+        notifications={notifications}
         onBack={handleBackToHome}
         onLeave={handleLeaveCrew}
+        onSignOut={handleSignOut}
+        onMarkNotificationsRead={handleMarkNotificationsRead}
       />
 
       <div className="pt-4">
