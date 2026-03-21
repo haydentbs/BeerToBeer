@@ -44,6 +44,8 @@ function loadDotEnv() {
 loadDotEnv()
 
 const DELETE_PLANS: Array<{ table: string; column?: string }> = [
+  { table: 'mini_game_match_events' },
+  { table: 'mini_game_matches' },
   { table: 'bet_status_events' },
   { table: 'settlement_confirmations' },
   { table: 'settlement_requests' },
@@ -78,6 +80,10 @@ export async function resetDatabase() {
     const column = plan.column ?? 'id'
     const { error } = await supabase.from(plan.table).delete().not(column, 'is', null)
     if (error) {
+      if (/Could not find the table/i.test(error.message ?? '')) {
+        continue
+      }
+
       throw error
     }
   }
@@ -373,9 +379,52 @@ export async function createCrewWithNight(label: string) {
         id: night.id,
         name: night.name,
         status: night.status,
+        miniGameMatches: [],
       },
     },
     night,
+  }
+}
+
+export async function ageBetPendingResult(betId: string, secondsAgo = 61) {
+  const supabase = getServiceRoleClient()
+  const { error } = await supabase
+    .from('bets')
+    .update({
+      pending_result_at: new Date(Date.now() - secondsAgo * 1000).toISOString(),
+    })
+    .eq('id', betId)
+
+  if (error) {
+    throw error
+  }
+}
+
+export async function ageDispute(disputeId: string, secondsAgo = 61) {
+  const supabase = getServiceRoleClient()
+  const { error } = await supabase
+    .from('disputes')
+    .update({
+      expires_at: new Date(Date.now() - secondsAgo * 1000).toISOString(),
+    })
+    .eq('id', disputeId)
+
+  if (error) {
+    throw error
+  }
+}
+
+export async function setMiniGameHiddenSlot(matchId: string, hiddenSlotIndex: number) {
+  const supabase = getServiceRoleClient()
+  const { error } = await supabase
+    .from('mini_game_matches')
+    .update({
+      hidden_slot_index: hiddenSlotIndex,
+    })
+    .eq('id', matchId)
+
+  if (error) {
+    throw error
   }
 }
 

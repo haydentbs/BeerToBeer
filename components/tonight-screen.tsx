@@ -1,49 +1,111 @@
 'use client'
 
 import { useState } from 'react'
+import { Bomb, Sparkles } from 'lucide-react'
 import { BetCardCompact } from './bet-card-compact'
 import { BetDetailModal } from './bet-detail-modal'
+import {
+  BeerBombMatchCard,
+  BeerBombMatchModal,
+  type BeerBombMatch,
+} from './beer-bomb-match-modal'
 import { useTheme } from './theme-provider'
 import type { Bet, Night } from '@/lib/store'
+import { useCurrentUser } from '@/lib/current-user'
 
 interface TonightScreenProps {
   night: Night
   onWager: (betId: string, optionId: string, drinks: number) => void
+  onBeerBombAccept: (matchId: string) => Promise<void> | void
+  onBeerBombDecline: (matchId: string) => Promise<void> | void
+  onBeerBombCancel: (matchId: string) => Promise<void> | void
+  onBeerBombTurn: (matchId: string, slotIndex: number) => Promise<void> | void
 }
 
-export function TonightScreen({ night, onWager }: TonightScreenProps) {
+export function TonightScreen({
+  night,
+  onWager,
+  onBeerBombAccept,
+  onBeerBombDecline,
+  onBeerBombCancel,
+  onBeerBombTurn,
+}: TonightScreenProps) {
+  const currentUser = useCurrentUser()
   const [selectedBet, setSelectedBet] = useState<Bet | null>(null)
+  const [selectedBeerBombMatch, setSelectedBeerBombMatch] = useState<BeerBombMatch | null>(null)
   const { drinkEmoji } = useTheme()
-  
-  const activeBets = night.bets.filter(b => b.status === 'open')
-  const resolvedBets = night.bets.filter(b => b.status === 'resolved')
-  const totalPool = night.bets.reduce((acc, b) => acc + b.totalPool, 0)
+
+  const miniGameMatches = (night.miniGameMatches ?? []) as unknown as BeerBombMatch[]
+  const activeBets = night.bets.filter((bet) => ['open', 'pending_result', 'disputed'].includes(bet.status))
+  const resolvedBets = night.bets.filter((bet) => ['resolved', 'void', 'cancelled'].includes(bet.status))
+  const totalPool = night.bets.reduce((acc, bet) => acc + bet.totalPool, 0)
 
   return (
     <>
-      <div className="pb-24 px-4 space-y-5">
-        {/* Quick Stats */}
+      <div className="space-y-5 px-4 pb-24">
         <div className="grid grid-cols-3 gap-3">
-          <div className="bg-card rounded-xl border-2 border-border p-3 text-center">
+          <div className="rounded-xl border-2 border-border bg-card p-3 text-center">
             <div className="text-2xl font-bold text-primary">{activeBets.length}</div>
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Active</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Active</div>
           </div>
-          <div className="bg-card rounded-xl border-2 border-border p-3 text-center">
+          <div className="rounded-xl border-2 border-border bg-card p-3 text-center">
             <div className="text-2xl font-bold text-card-foreground">{night.participants.length}</div>
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Players</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Players</div>
           </div>
-          <div className="bg-card rounded-xl border-2 border-border p-3 text-center">
+          <div className="rounded-xl border-2 border-border bg-card p-3 text-center">
             <div className="text-2xl font-bold text-win">{totalPool.toFixed(1)}</div>
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pool</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pool</div>
           </div>
         </div>
 
-        {/* Active Bets Section */}
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-foreground">
+              <Bomb className="h-4 w-4 text-primary" />
+              Beer Bomb
+            </h2>
+            <span className="text-xs text-muted-foreground">{miniGameMatches.length} challenges</span>
+          </div>
+
+          {miniGameMatches.length > 0 ? (
+            <div className="space-y-2">
+              {miniGameMatches.map((match) => (
+                <BeerBombMatchCard
+                  key={match.id}
+                  match={match}
+                  currentMembershipId={currentUser.membershipId ?? currentUser.id}
+                  onOpen={setSelectedBeerBombMatch}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="relative overflow-hidden rounded-2xl border-3 border-border bg-surface p-4">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,207,111,0.15),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(89,212,255,0.12),transparent_30%)]" />
+              <div className="relative flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-primary">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    First mini-game
+                  </div>
+                  <h3 className="text-lg font-bold text-card-foreground">Beer Bomb challenge lane</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Tap beers in a line until one turns out to be the bomb. Use the plus button to challenge someone and lock in the wager.
+                  </p>
+                </div>
+                <div className="rounded-xl border-2 border-border bg-card px-3 py-2 text-center">
+                  <div className="text-2xl">{drinkEmoji}</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ready</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+
         {activeBets.length > 0 && (
           <section>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-bold text-foreground uppercase tracking-wide">Active Bets</h2>
-              <span className="text-xs text-muted-foreground">{activeBets.length} open</span>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">Active Bets</h2>
+              <span className="text-xs text-muted-foreground">{activeBets.length} live</span>
             </div>
             <div className="space-y-2">
               {activeBets.map((bet) => (
@@ -53,11 +115,10 @@ export function TonightScreen({ night, onWager }: TonightScreenProps) {
           </section>
         )}
 
-        {/* Resolved Bets Section */}
         {resolvedBets.length > 0 && (
           <section>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-bold text-foreground uppercase tracking-wide">Settled</h2>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">Settled</h2>
               <span className="text-xs text-muted-foreground">{resolvedBets.length} done</span>
             </div>
             <div className="space-y-2">
@@ -68,26 +129,33 @@ export function TonightScreen({ night, onWager }: TonightScreenProps) {
           </section>
         )}
 
-        {/* Empty State */}
-        {activeBets.length === 0 && resolvedBets.length === 0 && (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 rounded-full bg-surface border-2 border-border mx-auto flex items-center justify-center mb-4">
+        {activeBets.length === 0 && resolvedBets.length === 0 && miniGameMatches.length === 0 && (
+          <div className="py-12 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border-2 border-border bg-surface">
               <span className="text-2xl">{drinkEmoji}</span>
             </div>
-            <h3 className="font-bold text-foreground mb-2">No bets yet</h3>
-            <p className="text-sm text-muted-foreground">
-              Create the first bet of the night!
-            </p>
+            <h3 className="mb-2 font-bold text-foreground">No bets yet</h3>
+            <p className="text-sm text-muted-foreground">Create the first bet or Beer Bomb challenge of the night.</p>
           </div>
         )}
       </div>
 
-      {/* Bet Detail Modal */}
       <BetDetailModal
         bet={selectedBet}
         isOpen={!!selectedBet}
         onClose={() => setSelectedBet(null)}
         onWager={onWager}
+      />
+
+      <BeerBombMatchModal
+        match={selectedBeerBombMatch}
+        isOpen={!!selectedBeerBombMatch}
+        currentMembershipId={currentUser.membershipId ?? currentUser.id}
+        onClose={() => setSelectedBeerBombMatch(null)}
+        onAccept={onBeerBombAccept}
+        onDecline={onBeerBombDecline}
+        onCancel={onBeerBombCancel}
+        onTakeTurn={onBeerBombTurn}
       />
     </>
   )

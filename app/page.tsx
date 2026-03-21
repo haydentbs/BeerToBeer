@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { OnboardingScreen } from '@/components/onboarding-screen'
 import { HomeScreen } from '@/components/home-screen'
@@ -33,7 +33,15 @@ import {
 import { useTheme } from '@/components/theme-provider'
 import type { DrinkTheme } from '@/lib/themes'
 import { CurrentUserProvider } from '@/lib/current-user'
-import { fetchBootstrapState, joinGuest, mutateApp } from '@/lib/client/app-api'
+import {
+  cancelMiniGameChallenge,
+  createMiniGameChallenge,
+  fetchBootstrapState,
+  joinGuest,
+  mutateApp,
+  respondToMiniGameChallenge,
+  takeMiniGameTurn,
+} from '@/lib/client/app-api'
 import type { AppMutationPayload, ClaimableGuest } from '@/lib/server/domain'
 
 type AppView = 'home' | 'crew'
@@ -67,11 +75,22 @@ interface AuthActionResult {
 
 interface CreateBetInput {
   type: Bet['type']
+  subtype: Bet['subtype']
   title: string
   options: Array<{ label: string }>
+  line?: number
   challenger?: { id: string } | undefined
   wager?: number
+  initialOptionIndex?: number
   closeTime: number
+}
+
+interface CreateMiniGameInput {
+  title: string
+  opponent: { id: string }
+  wager: number
+  closeTime: number
+  boardSize?: number
 }
 
 export default function BeerScoreApp() {
@@ -320,6 +339,44 @@ export default function BeerScoreApp() {
     }
   }, [applyAppPayload, sessionLoadKey])
 
+  const activeCrew = crews.find((crew) => crew.id === activeCrewId)
+  const hasLiveMiniGameMatch = Boolean(
+    activeCrew?.currentNight?.miniGameMatches.some((match) => match.status === 'pending' || match.status === 'active')
+  )
+
+  useEffect(() => {
+    if (!session || view !== 'crew' || !activeCrewId) {
+      return
+    }
+
+    let cancelled = false
+    let intervalId: ReturnType<typeof setInterval> | null = null
+
+    const poll = async () => {
+      try {
+        const payload = await fetchBootstrapState()
+        if (!cancelled) {
+          applyAppPayload(payload)
+        }
+      } catch {
+        // Best-effort polling only; local Beer Bomb state stays live even if the refresh fails.
+      }
+    }
+
+    const intervalMs = activeTab === 'tonight' && hasLiveMiniGameMatch ? 2500 : 8000
+
+    intervalId = setInterval(() => {
+      void poll()
+    }, intervalMs)
+
+    return () => {
+      cancelled = true
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+    }
+  }, [activeCrewId, activeTab, applyAppPayload, hasLiveMiniGameMatch, session, view])
+
   useEffect(() => {
     if (!session || session.isGuest || !getPendingGuestClaimFlag()) {
       return
@@ -416,8 +473,8 @@ export default function BeerScoreApp() {
     return positions
   }, [crewDataById, crews, session])
 
-  const activeCrew = crews.find((crew) => crew.id === activeCrewId)
   const activeCrewData = activeCrewId ? crewDataById[activeCrewId] : null
+  const activeNightWithMiniGames = activeCrew?.currentNight ?? null
 
   const handleGoogleAuth = async ({ preserveGuestSession = false }: { preserveGuestSession?: boolean } = {}): Promise<AuthActionResult> => {
     if (!supabaseConfigured) {
@@ -615,21 +672,89 @@ export default function BeerScoreApp() {
         ? getCrewMemberMembershipId(activeCrew.members.find((member) => member.id === betInput.challenger?.id)) ?? undefined
         : undefined
 
-    const initialOptionIndex = betInput.type === 'h2h'
-      ? 0
-      : 0
-
     void mutateApp('createBet', {
       crewId: activeCrewId,
       nightId: activeCrew.currentNight.id,
       type: betInput.type,
+      subtype: betInput.subtype,
       title: betInput.title,
       options: betInput.options,
+      line: betInput.line,
       closeTime: betInput.closeTime,
       wager: betInput.wager ?? 0,
-      initialOptionIndex,
+      initialOptionIndex: betInput.initialOptionIndex ?? 0,
       challengerMembershipId,
     }).then(applyAppPayload)
+  }
+
+  const handleCreateMiniGameChallenge = async (challengeInput: CreateMiniGameInput) => {
+    if (!activeCrewId || !session || !activeCrew?.currentNight) {
+      return
+    }
+
+    const opponentMember = activeCrew.members.find((member) => member.id === challengeInput.opponent.id)
+    if (!opponentMember) {
+      return
+    }
+
+    const opponentMembershipId = getCrewMemberMembershipId(opponentMember)
+    if (!opponentMembershipId) {
+      return
+    }
+
+    const payload = await createMiniGameChallenge({
+      crewId: activeCrewId,
+      nightId: activeCrew.currentNight.id,
+      title: challengeInput.title,
+      opponentMembershipId,
+      wager: challengeInput.wager,
+      closeTime: challengeInput.closeTime,
+      boardSize: challengeInput.boardSize ?? 8,
+    })
+    applyAppPayload(payload)
+  }
+
+  const handleBeerBombAccept = async (matchId: string) => {
+    if (!activeCrewId) return
+
+    const payload = await respondToMiniGameChallenge({
+      crewId: activeCrewId,
+      matchId,
+      accepted: true,
+    })
+    applyAppPayload(payload)
+  }
+
+  const handleBeerBombDecline = async (matchId: string) => {
+    if (!activeCrewId) return
+
+    const payload = await respondToMiniGameChallenge({
+      crewId: activeCrewId,
+      matchId,
+      accepted: false,
+    })
+    applyAppPayload(payload)
+  }
+
+  const handleBeerBombCancel = async (matchId: string) => {
+    if (!activeCrewId) return
+
+    const payload = await cancelMiniGameChallenge({
+      crewId: activeCrewId,
+      matchId,
+    })
+    applyAppPayload(payload)
+  }
+
+  const handleBeerBombTurn = async (matchId: string, slotIndex: number) => {
+    if (!activeCrewId) return
+
+    const payload = await takeMiniGameTurn({
+      crewId: activeCrewId,
+      matchId,
+      slotIndex,
+    })
+    applyAppPayload(payload)
   }
 
   const handleSettle = (_entry: unknown) => {
@@ -731,8 +856,15 @@ export default function BeerScoreApp() {
       />
 
       <div className="pt-4">
-        {activeTab === 'tonight' && activeCrew.currentNight && (
-          <TonightScreen night={activeCrew.currentNight} onWager={handleWager} />
+        {activeTab === 'tonight' && activeNightWithMiniGames && (
+          <TonightScreen
+            night={activeNightWithMiniGames}
+            onWager={handleWager}
+            onBeerBombAccept={handleBeerBombAccept}
+            onBeerBombDecline={handleBeerBombDecline}
+            onBeerBombCancel={handleBeerBombCancel}
+            onBeerBombTurn={handleBeerBombTurn}
+          />
         )}
 
         {activeTab === 'tonight' && !activeCrew.currentNight && (
@@ -791,6 +923,7 @@ export default function BeerScoreApp() {
         isOpen={showCreateBet}
         onClose={() => setShowCreateBet(false)}
         onCreate={handleCreateBet}
+        onCreateMiniGame={handleCreateMiniGameChallenge}
         members={activeCrew?.members ?? crews[0]?.members ?? [session.user]}
       />
 

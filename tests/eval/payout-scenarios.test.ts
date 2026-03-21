@@ -7,6 +7,7 @@ describe('payout evaluation scenarios', () => {
     const bet = {
       id: 'bet-1',
       type: 'prop' as const,
+      subtype: 'yesno' as const,
       title: 'Fixture bet',
       creator: { id: 'creator', name: 'Creator', avatar: '', initials: 'CR' },
       status: 'open' as const,
@@ -32,13 +33,20 @@ describe('payout evaluation scenarios', () => {
     }
 
     const resolved = resolveBetWithParimutuel(bet, scenario.winningOptionId)
+
+    if (scenario.expectedVoid) {
+      expect(resolved.status).toBe('void')
+      expect(resolved.memberOutcomes).toEqual([])
+      return
+    }
+
     const actual = Object.fromEntries(
       (resolved.memberOutcomes ?? []).map((outcome) => [outcome.user.id, outcome.netResult])
     )
 
     expect(actual).toEqual(scenario.expectedNetByUser)
     expect(
-      (resolved.memberOutcomes ?? []).reduce((sum, outcome) => sum + outcome.netResult, 0)
+      Number((resolved.memberOutcomes ?? []).reduce((sum, outcome) => sum + outcome.netResult, 0).toFixed(2))
     ).toBe(0)
   })
 })

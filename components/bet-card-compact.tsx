@@ -31,7 +31,9 @@ export function BetCardCompact({ bet, onTap }: BetCardCompactProps) {
   )
   
   const isResolved = bet.status === 'resolved'
-  const isVoid = bet.status === 'void'
+  const isPendingResult = bet.status === 'pending_result'
+  const isDisputed = bet.status === 'disputed'
+  const isVoid = bet.status === 'void' || bet.status === 'cancelled'
   const userOutcome = getMemberOutcomeForBet(bet, currentUser.id)
 
   return (
@@ -88,12 +90,24 @@ export function BetCardCompact({ bet, onTap }: BetCardCompactProps) {
               </span>
             </>
           )}
-          {!isResolved && !isVoid && (
+          {!isResolved && !isVoid && !isPendingResult && !isDisputed && (
             <>
               <span className="text-xs text-muted-foreground">·</span>
               <span className="text-xs font-semibold text-primary">
                 {leadingOption.label}
               </span>
+            </>
+          )}
+          {isPendingResult && (
+            <>
+              <span className="text-xs text-muted-foreground">·</span>
+              <span className="text-xs font-semibold text-primary">Result pending</span>
+            </>
+          )}
+          {isDisputed && (
+            <>
+              <span className="text-xs text-muted-foreground">·</span>
+              <span className="text-xs font-semibold text-loss">Under dispute</span>
             </>
           )}
         </div>
@@ -105,6 +119,10 @@ export function BetCardCompact({ bet, onTap }: BetCardCompactProps) {
           <span className={cn('text-xs font-semibold uppercase', isVoid ? 'text-muted-foreground' : 'text-win')}>
             {isVoid ? 'Void' : 'Settled'}
           </span>
+        ) : isPendingResult ? (
+          <span className="text-xs font-semibold uppercase text-primary">Pending</span>
+        ) : isDisputed ? (
+          <span className="text-xs font-semibold uppercase text-loss">Disputed</span>
         ) : (
           <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-surface border border-border">
             <Clock className="w-3 h-3 text-primary" />

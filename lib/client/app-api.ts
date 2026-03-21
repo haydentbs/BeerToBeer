@@ -10,6 +10,7 @@ function reviveBet(bet: any): Bet {
     ...bet,
     createdAt: new Date(bet.createdAt),
     closesAt: new Date(bet.closesAt),
+    pendingResultAt: bet.pendingResultAt ? new Date(bet.pendingResultAt) : undefined,
     options: (bet.options ?? []).map((option: any) => ({
       ...option,
       wagers: (option.wagers ?? []).map((wager: any) => ({
@@ -28,6 +29,17 @@ function reviveCrew(crew: any): Crew {
           ...crew.currentNight,
           startedAt: new Date(crew.currentNight.startedAt),
           bets: (crew.currentNight.bets ?? []).map(reviveBet),
+          miniGameMatches: (crew.currentNight.miniGameMatches ?? []).map((match: any) => ({
+            ...match,
+            createdAt: new Date(match.createdAt),
+            updatedAt: new Date(match.updatedAt),
+            acceptedAt: match.acceptedAt ? new Date(match.acceptedAt) : null,
+            completedAt: match.completedAt ? new Date(match.completedAt) : null,
+            revealedSlotIndices: match.revealedSlotIndices ?? match.revealedSlots ?? [],
+            currentTurnMembershipId: match.currentTurnMembershipId ?? match.currentTurn?.membershipId ?? null,
+            winnerMembershipId: match.winnerMembershipId ?? match.winner?.membershipId ?? null,
+            loserMembershipId: match.loserMembershipId ?? match.loser?.membershipId ?? null,
+          })),
         }
       : undefined,
     pastNights: crew.pastNights ?? [],
@@ -111,4 +123,20 @@ export async function mutateApp(action: string, payload: Record<string, any>) {
   })
 
   return revivePayload(response)
+}
+
+export async function createMiniGameChallenge(payload: Record<string, any>) {
+  return mutateApp('createMiniGameChallenge', payload)
+}
+
+export async function respondToMiniGameChallenge(payload: Record<string, any>) {
+  return mutateApp('respondToMiniGameChallenge', payload)
+}
+
+export async function takeMiniGameTurn(payload: Record<string, any>) {
+  return mutateApp('takeMiniGameTurn', payload)
+}
+
+export async function cancelMiniGameChallenge(payload: Record<string, any>) {
+  return mutateApp('cancelMiniGameChallenge', payload)
 }

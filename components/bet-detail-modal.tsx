@@ -48,7 +48,9 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
   if (!isOpen || !bet) return null
 
   const isResolved = bet.status === 'resolved'
-  const isVoid = bet.status === 'void'
+  const isPendingResult = bet.status === 'pending_result'
+  const isDisputed = bet.status === 'disputed'
+  const isVoid = bet.status === 'void' || bet.status === 'cancelled'
   const userOutcome = getMemberOutcomeForBet(bet, currentUser.id)
   const userWager = getUserWagerForBet(bet, currentUser.id)
   const selectedProjection = selectedOption
@@ -88,12 +90,21 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
                 <HelpCircle className="h-4 w-4 text-primary" />
               )}
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                {bet.type === 'h2h' ? 'Head-to-Head' : 'Prop Bet'}
+                {bet.type === 'h2h'
+                  ? 'Head-to-Head'
+                  : bet.subtype === 'overunder'
+                    ? 'Over / Under'
+                    : bet.subtype === 'multi'
+                      ? 'Prediction'
+                      : 'Prop Bet'}
               </span>
             </div>
             <h2 className="font-bold text-card-foreground text-xl">{bet.title}</h2>
             {bet.description && (
               <p className="text-sm text-muted-foreground mt-1">{bet.description}</p>
+            )}
+            {bet.subtype === 'overunder' && bet.line != null && (
+              <p className="mt-2 text-sm font-semibold text-primary">Line: {bet.line.toFixed(1)}</p>
             )}
           </div>
 
@@ -113,6 +124,19 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
               {formatDrinks(bet.totalPool)} drinks
             </span>
           </div>
+
+          {(isPendingResult || isDisputed) && (
+            <div className="mb-4 rounded-xl border-2 border-border bg-surface p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {isPendingResult ? 'Pending Result' : 'Disputed'}
+              </div>
+              <div className="mt-2 text-sm text-card-foreground">
+                {isPendingResult
+                  ? `Proposed winner: ${bet.options.find((option) => option.id === bet.pendingResultOptionId)?.label ?? 'Unknown'}`
+                  : 'Crew voting is in progress for this result.'}
+              </div>
+            </div>
+          )}
 
           {/* Options */}
           <div className="space-y-2 mb-4">
@@ -188,7 +212,7 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
               </div>
               {isVoid ? (
                 <div className="mt-2 text-sm text-card-foreground">
-                  This bet was voided because there was no opposing action in the pool.
+                  {bet.voidReason ?? 'This bet was voided.'}
                 </div>
               ) : (
                 <div className="mt-2 space-y-2">
@@ -226,7 +250,7 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
           )}
 
           {/* Wager Controls */}
-          {!isResolved && !isVoid && selectedOption && (
+          {!isResolved && !isVoid && !isPendingResult && !isDisputed && selectedOption && (
             <div className="pt-4 border-t-2 border-border">
               <div className="flex items-center gap-3">
                 <div className="flex-1">

@@ -1,13 +1,16 @@
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { buildGuestSession, type AppSession } from '@/lib/auth'
 import {
+  BEER_BOMB_BOARD_SIZE,
   deriveLedgerEntriesFromBets,
   generateCrewCode,
+  formatDrinks,
   resolveBetWithParimutuel,
   type Bet,
   type Crew,
   type LeaderboardEntry,
   type LedgerEntry,
+  type MiniGameMatch,
   type Night,
   type Notification,
   type PastNight,
@@ -19,6 +22,10 @@ import type { RequestActor } from '@/lib/server/session'
 
 type DrinkTheme = Crew['drinkTheme']
 type Role = 'creator' | 'admin' | 'member' | 'guest'
+
+const MAX_WAGER_DRINKS = 5
+const RESULT_CONFIRMATION_WINDOW_MS = 60_000
+const DISPUTE_VOTE_WINDOW_MS = 60_000
 
 const ROLE_ORDER: Record<Role, number> = {
   creator: 0,
@@ -39,11 +46,85 @@ function normalizeInviteCode(value: string) {
 }
 
 function isValidHalfDrinkAmount(value: number) {
-  return Number.isFinite(value) && value > 0 && Math.round(value * 2) === value * 2
+  return Number.isFinite(value) && value > 0 && value <= MAX_WAGER_DRINKS && Math.round(value * 2) === value * 2
 }
 
 function asDate(value: string | Date | null | undefined) {
   return value ? new Date(value) : new Date()
+}
+
+function normalizeIntegerArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [] as number[]
+  }
+
+  return value
+    .map((entry) => Number(entry))
+    .filter((entry, index, entries) => Number.isInteger(entry) && entry >= 0 && entries.indexOf(entry) === index)
+}
+
+function getMiniGameDefaultTitle(challenger: User, opponent: User) {
+  return `Beer Bomb: ${challenger.name} vs ${opponent.name}`
+}
+
+function createMiniGameMatchFromRow(row: any, usersByMembershipId: Map<string, User>): MiniGameMatch | null {
+  const challenger = usersByMembershipId.get(row.challenger_membership_id)
+  const opponent = usersByMembershipId.get(row.opponent_membership_id)
+
+  if (!challenger || !opponent) {
+    return null
+  }
+
+  return {
+    id: row.id,
+    gameKey: row.game_key,
+    title: row.title ?? getMiniGameDefaultTitle(challenger, opponent),
+    status: row.status,
+    challenger,
+    opponent,
+    proposedWager: Number(row.proposed_wager),
+    agreedWager: row.agreed_wager == null ? undefined : Number(row.agreed_wager),
+    boardSize: Number(row.board_size ?? BEER_BOMB_BOARD_SIZE),
+    revealedSlots: normalizeIntegerArray(row.revealed_slots),
+    createdAt: asDate(row.created_at),
+    updatedAt: asDate(row.updated_at),
+    startingPlayer: row.starting_player_membership_id
+      ? usersByMembershipId.get(row.starting_player_membership_id)
+      : undefined,
+    currentTurn: row.current_turn_membership_id
+      ? usersByMembershipId.get(row.current_turn_membership_id)
+      : undefined,
+    winner: row.winner_membership_id ? usersByMembershipId.get(row.winner_membership_id) : undefined,
+    loser: row.loser_membership_id ? usersByMembershipId.get(row.loser_membership_id) : undefined,
+    completedAt: row.completed_at ? asDate(row.completed_at) : undefined,
+    bombSlotIndex: row.status === 'completed' && row.losing_slot_index != null
+      ? Number(row.losing_slot_index)
+      : undefined,
+  }
+}
+
+function deriveBetSubtype(bet: any, options: Array<{ label?: string }> = []): Bet['subtype'] {
+  if (bet.type === 'h2h') {
+    return null
+  }
+
+  if (bet.subtype === 'yesno' || bet.subtype === 'overunder' || bet.subtype === 'multi') {
+    return bet.subtype
+  }
+
+  if (options.length > 2) {
+    return 'multi'
+  }
+
+  return bet.line != null ? 'overunder' : 'yesno'
+}
+
+function canMembershipProposeBetResult(bet: any, membershipId: string) {
+  if (bet.type === 'h2h') {
+    return bet.created_by_membership_id === membershipId || bet.challenger_membership_id === membershipId
+  }
+
+  return bet.created_by_membership_id === membershipId
 }
 
 function compareMemberships(a: any, b: any) {
@@ -272,13 +353,26 @@ async function mergeGuestNotificationPreference(fromMembershipId: string, toMemb
 }
 
 async function updateMembershipReference(table: string, column: string, fromMembershipId: string, toMembershipId: string) {
+  if (table === 'mini_game_matches' || table === 'mini_game_match_events') {
+    const available = await hasMiniGameMatchTable()
+    if (!available) {
+      return
+    }
+  }
+
   const supabase = getServiceRoleClient()
   const { error } = await supabase
     .from(table)
     .update({ [column]: toMembershipId })
     .eq(column, fromMembershipId)
 
-  if (error) throw error
+  if (error) {
+    if (/mini_game_matches|mini_game_match_events|schema cache/i.test(error.message ?? '')) {
+      return
+    }
+
+    throw error
+  }
 }
 
 async function mergeGuestMembershipIntoProfile(profile: any, guestMembershipId: string) {
@@ -328,6 +422,13 @@ async function mergeGuestMembershipIntoProfile(profile: any, guestMembershipId: 
       ['bet_comments', 'membership_id'],
       ['disputes', 'opened_by_membership_id'],
       ['bet_status_events', 'actor_membership_id'],
+      ['mini_game_matches', 'created_by_membership_id'],
+      ['mini_game_matches', 'opponent_membership_id'],
+      ['mini_game_matches', 'starting_player_membership_id'],
+      ['mini_game_matches', 'current_turn_membership_id'],
+      ['mini_game_matches', 'winner_membership_id'],
+      ['mini_game_matches', 'loser_membership_id'],
+      ['mini_game_match_events', 'actor_membership_id'],
       ['bet_member_outcomes', 'membership_id'],
       ['ledger_events', 'from_membership_id'],
       ['ledger_events', 'to_membership_id'],
@@ -475,17 +576,110 @@ function buildPastNight(night: any, bets: Bet[]): PastNight {
     winner: leaderboard[0]?.user.name ?? 'TBD',
     duration: endedAt ? `${durationHours}h` : '—',
     betDetails: bets
-      .filter((bet) => bet.status === 'resolved' || bet.status === 'void')
+      .filter((bet) => bet.status === 'resolved' || bet.status === 'void' || bet.status === 'cancelled')
       .map((bet) => ({
         title: bet.title,
         type: bet.type,
-        winner: bet.status === 'void'
+        winner: bet.status === 'void' || bet.status === 'cancelled'
           ? 'Void'
           : (bet.options.find((option) => option.id === bet.result)?.label ?? 'Unknown'),
         pool: bet.totalPool,
       })),
     leaderboard,
   }
+}
+
+function normalizeMiniGameRevealedSlots(revealedSlots: any): number[] {
+  if (!Array.isArray(revealedSlots)) {
+    return []
+  }
+
+  return revealedSlots
+    .map((slot) => Number(slot))
+    .filter((slot) => Number.isInteger(slot) && slot >= 0)
+}
+
+function buildMiniGameMatch(match: any, usersByMembershipId: Map<string, User>): MiniGameMatch {
+  const challenger = usersByMembershipId.get(match.created_by_membership_id) ?? {
+    id: match.created_by_membership_id,
+    membershipId: match.created_by_membership_id,
+    name: 'Player',
+    avatar: '',
+    initials: 'PL',
+  }
+
+  const opponent = usersByMembershipId.get(match.opponent_membership_id) ?? {
+    id: match.opponent_membership_id,
+    membershipId: match.opponent_membership_id,
+    name: 'Player',
+    avatar: '',
+    initials: 'PL',
+  }
+
+  const startingPlayer = match.starting_player_membership_id
+    ? usersByMembershipId.get(match.starting_player_membership_id)
+    : undefined
+  const currentTurn = match.current_turn_membership_id
+    ? usersByMembershipId.get(match.current_turn_membership_id)
+    : undefined
+  const winner = match.winner_membership_id
+    ? usersByMembershipId.get(match.winner_membership_id)
+    : undefined
+  const loser = match.loser_membership_id
+    ? usersByMembershipId.get(match.loser_membership_id)
+    : undefined
+
+  return {
+    id: match.id,
+    gameKey: match.game_key,
+    title: match.title,
+    status: match.status,
+    challenger,
+    opponent,
+    proposedWager: Number(match.proposed_wager),
+    agreedWager: match.agreed_wager == null ? undefined : Number(match.agreed_wager),
+    boardSize: Number(match.board_size ?? BEER_BOMB_BOARD_SIZE),
+    revealedSlots: normalizeMiniGameRevealedSlots(match.revealed_slots),
+    createdAt: asDate(match.created_at),
+    updatedAt: asDate(match.updated_at),
+    startingPlayer,
+    currentTurn,
+    winner,
+    loser,
+    completedAt: match.completed_at ? asDate(match.completed_at) : undefined,
+    bombSlotIndex: match.status === 'completed' && match.hidden_slot_index != null
+      ? Number(match.hidden_slot_index)
+      : undefined,
+  }
+}
+
+function buildMiniGameOutcomeEntries(matches: any[]): Array<{ membershipId: string; nightId: string | null; netResult: number }> {
+  return matches
+    .filter((match) =>
+      match.status === 'completed' &&
+      match.winner_membership_id &&
+      match.loser_membership_id &&
+      match.agreed_wager != null
+    )
+    .flatMap((match) => {
+      const wager = Number(match.agreed_wager)
+      if (!Number.isFinite(wager) || wager <= 0) {
+        return []
+      }
+
+      return [
+        {
+          membershipId: match.winner_membership_id as string,
+          nightId: match.night_id ?? null,
+          netResult: wager,
+        },
+        {
+          membershipId: match.loser_membership_id as string,
+          nightId: match.night_id ?? null,
+          netResult: -wager,
+        },
+      ]
+    })
 }
 
 function buildLedgerEntriesFromEvents(rows: any[], usersByMembershipId: Map<string, User>) {
@@ -505,6 +699,7 @@ function buildLedgerEntriesFromEvents(rows: any[], usersByMembershipId: Map<stri
       drinks: 0,
       settled: 0,
       betId: row.bet_id ?? undefined,
+      matchId: row.metadata?.matchId ?? row.metadata?.match_id ?? undefined,
     }
 
     const amount = Number(row.drinks)
@@ -717,6 +912,46 @@ async function ensureNightParticipant(nightId: string, membershipId: string) {
   }
 }
 
+async function requireActiveNightParticipant(nightId: string, membershipId: string) {
+  const supabase = getServiceRoleClient()
+  const { data: participant, error } = await supabase
+    .from('night_participants')
+    .select('id')
+    .eq('night_id', nightId)
+    .eq('membership_id', membershipId)
+    .is('left_at', null)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!participant) {
+    throw new Error('Only active night participants can use Beer Bomb.')
+  }
+
+  return participant
+}
+
+let miniGameMatchTableAvailable: boolean | null = null
+
+async function hasMiniGameMatchTable() {
+  if (miniGameMatchTableAvailable !== null) {
+    return miniGameMatchTableAvailable
+  }
+
+  const supabase = getServiceRoleClient()
+  const { error } = await supabase
+    .from('mini_game_matches')
+    .select('id')
+    .limit(1)
+
+  if (error) {
+    miniGameMatchTableAvailable = !/mini_game_matches|schema cache/i.test(error.message ?? '')
+    return miniGameMatchTableAvailable
+  }
+
+  miniGameMatchTableAvailable = true
+  return true
+}
+
 async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayload> {
   const supabase = getServiceRoleClient()
 
@@ -759,6 +994,9 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
     }
   }
 
+  await processBetExpirationsForCrews(crewIds)
+  await processMiniGameExpirationsForCrews(crewIds)
+
   const [
     crewResult,
     membershipResult,
@@ -788,7 +1026,8 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
         .in('membership_id', activeMemberships.map((membership: any) => membership.id))
         .order('created_at', { ascending: false })
 
-  const [participantResult, betResult, notificationResult, ledgerResult] = await Promise.all([
+  const canLoadMiniGameMatches = await hasMiniGameMatchTable()
+  const [participantResult, betResult, notificationResult, ledgerResult, miniGameMatchResult] = await Promise.all([
     nightIds.length
       ? supabase.from('night_participants').select('*').in('night_id', nightIds)
       : Promise.resolve({ data: [], error: null } as any),
@@ -797,6 +1036,9 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
       : Promise.resolve({ data: [], error: null } as any),
     notificationQuery,
     supabase.from('ledger_events').select('*').in('crew_id', crewIds).order('created_at', { ascending: false }),
+    canLoadMiniGameMatches && nightIds.length
+      ? supabase.from('mini_game_matches').select('*').in('night_id', nightIds).order('created_at', { ascending: false })
+      : Promise.resolve({ data: [], error: null } as any),
   ])
 
   if (participantResult.error) throw participantResult.error
@@ -804,8 +1046,15 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
   if (notificationResult.error) throw notificationResult.error
   if (ledgerResult.error) throw ledgerResult.error
 
+  const miniGameMatchQueryFailed = Boolean(
+    miniGameMatchResult.error &&
+    /mini_game_matches|schema cache/i.test(miniGameMatchResult.error.message ?? '')
+  )
+  if (miniGameMatchResult.error && !miniGameMatchQueryFailed) throw miniGameMatchResult.error
+
   const bets = betResult.data ?? []
   const betIds = bets.map((bet: any) => bet.id)
+  const miniGameMatches = miniGameMatchQueryFailed ? [] : (miniGameMatchResult.data ?? [])
 
   const [
     optionResult,
@@ -858,6 +1107,13 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
     const bucket = outcomesByBetId.get(outcome.bet_id) ?? []
     bucket.push(outcome)
     outcomesByBetId.set(outcome.bet_id, bucket)
+  })
+
+  const miniGameMatchesByNightId = new Map<string, MiniGameMatch[]>()
+  miniGameMatches.forEach((match: any) => {
+    const bucket = miniGameMatchesByNightId.get(match.night_id) ?? []
+    bucket.push(buildMiniGameMatch(match, usersByMembershipId))
+    miniGameMatchesByNightId.set(match.night_id, bucket)
   })
 
   const participantsByNightId = new Map<string, string[]>()
@@ -914,8 +1170,10 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
     bucket.push({
       id: bet.id,
       type: bet.type,
+      subtype: deriveBetSubtype(bet, options),
       title: bet.title,
       description: bet.description ?? undefined,
+      line: bet.line == null ? undefined : Number(bet.line),
       creator: usersByMembershipId.get(bet.created_by_membership_id) ?? {
         id: bet.created_by_membership_id,
         membershipId: bet.created_by_membership_id,
@@ -930,6 +1188,9 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
       options,
       totalPool: Number(options.reduce((sum, option) => sum + option.totalDrinks, 0).toFixed(2)),
       result: bet.winning_option_id ?? undefined,
+      pendingResultOptionId: bet.pending_result_option_id ?? undefined,
+      pendingResultAt: bet.pending_result_at ? asDate(bet.pending_result_at) : undefined,
+      voidReason: bet.void_reason ?? undefined,
       memberOutcomes,
     })
     betsByNightId.set(bet.night_id, bucket)
@@ -951,6 +1212,7 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
         startedAt: asDate(night.started_at),
         participants,
         bets: nightBets,
+        miniGameMatches: miniGameMatchesByNightId.get(night.id) ?? [],
         drinkThemeOverride: night.drink_theme_override ?? undefined,
       }
     } else {
@@ -967,7 +1229,7 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
       nightId: bet?.night_id ?? null,
       netResult: Number(outcome.net_result),
     }
-  })
+  }).concat(buildMiniGameOutcomeEntries(miniGameMatches))
 
   const crews: Crew[] = (crewResult.data ?? []).map((crewRow: any) => {
     const members = membershipRows
@@ -1138,7 +1400,7 @@ export async function joinCrewAsGuest(name: string, inviteCode: string): Promise
   return { ...payload, session }
 }
 
-async function resolveBetAndPersist(actorMembership: any, betId: string, winningOptionId: string) {
+async function loadBetResolutionContext(betId: string) {
   const supabase = getServiceRoleClient()
   const { data: bet, error: betError } = await supabase
     .from('bets')
@@ -1147,9 +1409,6 @@ async function resolveBetAndPersist(actorMembership: any, betId: string, winning
     .single()
 
   if (betError) throw betError
-  if (bet.status !== 'open' && bet.status !== 'locked') {
-    throw new Error('Only open or locked bets can be resolved.')
-  }
 
   const [optionResult, wagerResult, membershipResult] = await Promise.all([
     supabase.from('bet_options').select('*').eq('bet_id', betId).order('sort_order', { ascending: true }),
@@ -1170,23 +1429,24 @@ async function resolveBetAndPersist(actorMembership: any, betId: string, winning
     actorIdToMembershipId.set(user.id, membership.id)
   })
 
-    const options = (optionResult.data ?? []).map((option: any) => {
-      const wagers = (wagerResult.data ?? [])
-        .filter((wager: any) => wager.bet_option_id === option.id)
-        .map((wager: any) => {
-          const user = usersByMembershipId.get(wager.membership_id)
-          if (!user) {
-            return null
-          }
+  const wagerRows = wagerResult.data ?? []
+  const options = (optionResult.data ?? []).map((option: any) => {
+    const wagers = wagerRows
+      .filter((wager: any) => wager.bet_option_id === option.id)
+      .map((wager: any) => {
+        const user = usersByMembershipId.get(wager.membership_id)
+        if (!user) {
+          return null
+        }
 
-          return {
-            id: wager.id,
-            user,
-            drinks: Number(wager.drinks),
-            createdAt: asDate(wager.created_at),
-          }
-        })
-        .filter((wager): wager is { id: string; user: User; drinks: number; createdAt: Date } => Boolean(wager))
+        return {
+          id: wager.id,
+          user,
+          drinks: Number(wager.drinks),
+          createdAt: asDate(wager.created_at),
+        }
+      })
+      .filter((wager): wager is { id: string; user: User; drinks: number; createdAt: Date } => Boolean(wager))
 
     return {
       id: option.id,
@@ -1199,8 +1459,10 @@ async function resolveBetAndPersist(actorMembership: any, betId: string, winning
   const domainBet: Bet = {
     id: bet.id,
     type: bet.type,
+    subtype: deriveBetSubtype(bet, options),
     title: bet.title,
     description: bet.description ?? undefined,
+    line: bet.line == null ? undefined : Number(bet.line),
     creator: usersByMembershipId.get(bet.created_by_membership_id)!,
     challenger: bet.challenger_membership_id ? usersByMembershipId.get(bet.challenger_membership_id) : undefined,
     status: bet.status,
@@ -1208,27 +1470,208 @@ async function resolveBetAndPersist(actorMembership: any, betId: string, winning
     createdAt: asDate(bet.created_at),
     options,
     totalPool: Number(options.reduce((sum, option) => sum + option.totalDrinks, 0).toFixed(2)),
+    result: bet.winning_option_id ?? undefined,
+    pendingResultOptionId: bet.pending_result_option_id ?? undefined,
+    pendingResultAt: bet.pending_result_at ? asDate(bet.pending_result_at) : undefined,
+    voidReason: bet.void_reason ?? undefined,
   }
 
-  const resolvedBet = resolveBetWithParimutuel(domainBet, winningOptionId)
+  return {
+    bet,
+    domainBet,
+    actorIdToMembershipId,
+    wagerRows,
+  }
+}
+
+async function loadMiniGameMatchContext(matchId: string) {
+  const supabase = getServiceRoleClient()
+  const { data: match, error: matchError } = await supabase
+    .from('mini_game_matches')
+    .select('*')
+    .eq('id', matchId)
+    .single()
+
+  if (matchError) throw matchError
+
+  const { data: membershipRows, error: membershipError } = await supabase
+    .from('crew_memberships')
+    .select('*, profiles(*), guest_identities(*)')
+    .eq('crew_id', match.crew_id)
+
+  if (membershipError) throw membershipError
+
+  const usersByMembershipId = new Map<string, User>()
+  const actorIdToMembershipId = new Map<string, string>()
+
+  ;(membershipRows ?? []).forEach((membership: any) => {
+    const user = buildUserFromMembership(membership)
+    usersByMembershipId.set(membership.id, user)
+    actorIdToMembershipId.set(user.id, membership.id)
+  })
+
+  return {
+    match,
+    membershipRows: membershipRows ?? [],
+    usersByMembershipId,
+    actorIdToMembershipId,
+    domainMatch: buildMiniGameMatch(match, usersByMembershipId),
+  }
+}
+
+async function recordMiniGameMatchEvent(
+  matchId: string,
+  actorMembershipId: string | null,
+  eventType: string,
+  payload: Record<string, any>
+) {
+  const supabase = getServiceRoleClient()
+  const { error } = await supabase.from('mini_game_match_events').insert({
+    match_id: matchId,
+    actor_membership_id: actorMembershipId,
+    event_type: eventType,
+    payload,
+  })
+
+  if (error) throw error
+}
+
+async function cancelMiniGameMatch(match: any, actorMembershipId: string | null, reason: string, eventType = 'cancelled') {
+  const supabase = getServiceRoleClient()
+  const nextStatus = eventType === 'declined' ? 'declined' : 'cancelled'
+  const completedAt = new Date().toISOString()
+
+  await supabase
+    .from('mini_game_matches')
+    .update({
+      status: nextStatus,
+      decline_reason: reason,
+      current_turn_membership_id: null,
+      completed_at: completedAt,
+      updated_at: completedAt,
+    })
+    .eq('id', match.id)
+
+  await recordMiniGameMatchEvent(match.id, actorMembershipId, eventType, { reason })
+}
+
+async function processMiniGameExpirationsForCrews(crewIds: string[]) {
+  if (!crewIds.length) {
+    return
+  }
+
+  const available = await hasMiniGameMatchTable()
+  if (!available) {
+    return
+  }
+
+  const supabase = getServiceRoleClient()
+  const nowIso = new Date().toISOString()
+  const { data: staleMatches, error } = await supabase
+    .from('mini_game_matches')
+    .select('*')
+    .in('crew_id', crewIds)
+    .eq('status', 'pending')
+    .lt('respond_by_at', nowIso)
+
+  if (error) {
+    if (/mini_game_matches|schema cache/i.test(error.message ?? '')) {
+      return
+    }
+
+    throw error
+  }
+
+  for (const match of staleMatches ?? []) {
+    await cancelMiniGameMatch(match, match.created_by_membership_id ?? null, 'Challenge expired before it was accepted.', 'expired')
+  }
+}
+
+async function persistVoidBet(
+  actorMembershipId: string,
+  bet: any,
+  reason: string,
+  source: string,
+  note: string
+) {
+  const supabase = getServiceRoleClient()
 
   await supabase.from('bet_member_outcomes').delete().eq('bet_id', bet.id)
   await supabase.from('ledger_events').delete().eq('bet_id', bet.id)
 
   await supabase.from('bets').update({
-    status: resolvedBet.status,
-    winning_option_id: resolvedBet.status === 'resolved' ? winningOptionId : null,
+    status: 'void',
+    winning_option_id: null,
+    pending_result_option_id: null,
+    pending_result_at: null,
     resolved_at: new Date().toISOString(),
-    void_reason: resolvedBet.status === 'void' ? 'No opposing action in the pool.' : null,
+    void_reason: reason,
   }).eq('id', bet.id)
 
   await supabase.from('bet_status_events').insert({
     bet_id: bet.id,
-    actor_membership_id: actorMembership.id,
+    actor_membership_id: actorMembershipId,
     from_status: bet.status,
-    to_status: resolvedBet.status,
-    note: resolvedBet.status === 'void' ? 'Bet voided during resolution.' : 'Bet resolved.',
-    metadata: { winningOptionId },
+    to_status: 'void',
+    note,
+    metadata: { source, reason },
+  })
+
+  await notifyCrewMembers(bet.crew_id, {
+    type: 'bet_resolved',
+    title: `${bet.title} was voided`,
+    message: reason,
+    payload: { betId: bet.id, winningOptionId: null, voidReason: reason },
+    excludeMembershipId: actorMembershipId,
+  })
+}
+
+async function resolveBetAndPersist(
+  actorMembershipId: string,
+  betId: string,
+  winningOptionId: string,
+  source = 'manual',
+  note = 'Bet resolved.'
+) {
+  const supabase = getServiceRoleClient()
+  const { bet, domainBet, actorIdToMembershipId } = await loadBetResolutionContext(betId)
+
+  if (!['open', 'pending_result', 'disputed'].includes(bet.status)) {
+    throw new Error('Only open, pending-result, or disputed bets can be resolved.')
+  }
+
+  const resolvedBet = resolveBetWithParimutuel(domainBet, winningOptionId)
+
+  if (resolvedBet.status === 'void') {
+    await persistVoidBet(
+      actorMembershipId,
+      bet,
+      resolvedBet.voidReason ?? 'No opposing action',
+      source,
+      note
+    )
+    return resolvedBet
+  }
+
+  await supabase.from('bet_member_outcomes').delete().eq('bet_id', bet.id)
+  await supabase.from('ledger_events').delete().eq('bet_id', bet.id)
+
+  await supabase.from('bets').update({
+    status: 'resolved',
+    winning_option_id: winningOptionId,
+    pending_result_option_id: null,
+    pending_result_at: null,
+    resolved_at: new Date().toISOString(),
+    void_reason: null,
+  }).eq('id', bet.id)
+
+  await supabase.from('bet_status_events').insert({
+    bet_id: bet.id,
+    actor_membership_id: actorMembershipId,
+    from_status: bet.status,
+    to_status: 'resolved',
+    note,
+    metadata: { winningOptionId, source },
   })
 
   if (resolvedBet.memberOutcomes?.length) {
@@ -1251,42 +1694,191 @@ async function resolveBetAndPersist(actorMembership: any, betId: string, winning
     }
   }
 
-  if (resolvedBet.status === 'resolved') {
-    const ledgerRows = deriveLedgerEntriesFromBets([resolvedBet])
-      .map((entry: LedgerEntry) => {
-        const fromMembershipId = actorIdToMembershipId.get(entry.fromUser.id)
-        const toMembershipId = actorIdToMembershipId.get(entry.toUser.id)
-        if (!fromMembershipId || !toMembershipId) return null
-        return {
-          crew_id: bet.crew_id,
-          night_id: bet.night_id,
-          bet_id: bet.id,
-          from_membership_id: fromMembershipId,
-          to_membership_id: toMembershipId,
-          event_type: 'bet_result',
-          drinks: entry.drinks,
-          metadata: {},
-        }
-      })
-      .filter(Boolean)
+  const ledgerRows = deriveLedgerEntriesFromBets([resolvedBet])
+    .map((entry: LedgerEntry) => {
+      const fromMembershipId = actorIdToMembershipId.get(entry.fromUser.id)
+      const toMembershipId = actorIdToMembershipId.get(entry.toUser.id)
+      if (!fromMembershipId || !toMembershipId) return null
+      return {
+        crew_id: bet.crew_id,
+        night_id: bet.night_id,
+        bet_id: bet.id,
+        from_membership_id: fromMembershipId,
+        to_membership_id: toMembershipId,
+        event_type: 'bet_result',
+        drinks: entry.drinks,
+        metadata: {},
+      }
+    })
+    .filter(Boolean)
 
-    if (ledgerRows.length) {
-      await supabase.from('ledger_events').insert(ledgerRows as any)
-    }
+  if (ledgerRows.length) {
+    await supabase.from('ledger_events').insert(ledgerRows as any)
   }
 
   await notifyCrewMembers(bet.crew_id, {
     type: 'bet_resolved',
-    title: resolvedBet.status === 'void' ? `${bet.title} was voided` : `${bet.title} settled`,
-    message: resolvedBet.status === 'void'
-      ? 'The bet was voided because there was no opposing action.'
-      : `The result is in for ${bet.title}.`,
+    title: `${bet.title} settled`,
+    message: `The result is in for ${bet.title}.`,
     payload: {
       betId: bet.id,
-      winningOptionId: resolvedBet.status === 'resolved' ? winningOptionId : null,
+      winningOptionId,
     },
-    excludeMembershipId: actorMembership.id,
+    excludeMembershipId: actorMembershipId,
   })
+
+  return resolvedBet
+}
+
+async function finalizeDispute(disputeId: string, actorMembershipId: string) {
+  const supabase = getServiceRoleClient()
+  const { data: dispute, error: disputeError } = await supabase
+    .from('disputes')
+    .select('*')
+    .eq('id', disputeId)
+    .single()
+
+  if (disputeError) throw disputeError
+  if (dispute.status !== 'open') {
+    return
+  }
+
+  const { data: bet, error: betError } = await supabase
+    .from('bets')
+    .select('*')
+    .eq('id', dispute.bet_id)
+    .single()
+
+  if (betError) throw betError
+  if (bet.status !== 'disputed' || !bet.pending_result_option_id) {
+    return
+  }
+
+  const [voteResult, wagerResult] = await Promise.all([
+    supabase.from('dispute_votes').select('*').eq('dispute_id', dispute.id),
+    supabase.from('wagers').select('membership_id').eq('bet_id', bet.id),
+  ])
+
+  if (voteResult.error) throw voteResult.error
+  if (wagerResult.error) throw wagerResult.error
+
+  const eligibleMembershipIds = [...new Set((wagerResult.data ?? []).map((row: any) => row.membership_id))]
+  const votes = voteResult.data ?? []
+  const countedVoteMembershipIds = new Set(votes.map((vote: any) => vote.membership_id))
+  const tally = new Map<string, number>()
+
+  votes.forEach((vote: any) => {
+    if (!vote.option_id) {
+      return
+    }
+
+    tally.set(vote.option_id, (tally.get(vote.option_id) ?? 0) + 1)
+  })
+
+  eligibleMembershipIds
+    .filter((membershipId) => !countedVoteMembershipIds.has(membershipId))
+    .forEach(() => {
+      tally.set(
+        bet.pending_result_option_id,
+        (tally.get(bet.pending_result_option_id) ?? 0) + 1
+      )
+    })
+
+  const rankedOptions = [...tally.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  const winningEntry = rankedOptions[0]
+  const tie = rankedOptions.length > 1 && winningEntry?.[1] === rankedOptions[1][1]
+
+  if (!winningEntry || tie) {
+    await persistVoidBet(
+      actorMembershipId,
+      bet,
+      'Dispute vote tied',
+      'dispute',
+      'Bet voided after a tied dispute vote.'
+    )
+
+    await supabase.from('disputes').update({
+      status: 'resolved',
+      resolution_option_id: null,
+      resolved_at: new Date().toISOString(),
+    }).eq('id', dispute.id)
+    return
+  }
+
+  await resolveBetAndPersist(
+    actorMembershipId,
+    bet.id,
+    winningEntry[0],
+    'dispute',
+    'Bet resolved after a dispute vote.'
+  )
+
+  await supabase.from('disputes').update({
+    status: 'resolved',
+    resolution_option_id: winningEntry[0],
+    resolved_at: new Date().toISOString(),
+  }).eq('id', dispute.id)
+}
+
+async function processBetExpirationsForCrews(crewIds: string[]) {
+  if (!crewIds.length) {
+    return
+  }
+
+  const supabase = getServiceRoleClient()
+  const now = Date.now()
+
+  const { data: pendingBets, error: pendingError } = await supabase
+    .from('bets')
+    .select('id, crew_id, status, created_by_membership_id, pending_result_option_id, pending_result_at')
+    .in('crew_id', crewIds)
+    .eq('status', 'pending_result')
+
+  if (pendingError) throw pendingError
+
+  for (const bet of pendingBets ?? []) {
+    if (!bet.pending_result_option_id || !bet.pending_result_at) {
+      continue
+    }
+
+    if (asDate(bet.pending_result_at).getTime() + RESULT_CONFIRMATION_WINDOW_MS > now) {
+      continue
+    }
+
+    await resolveBetAndPersist(
+      bet.created_by_membership_id,
+      bet.id,
+      bet.pending_result_option_id,
+      'timeout',
+      'Pending result auto-confirmed after the dispute window elapsed.'
+    )
+  }
+
+  const { data: openDisputes, error: disputeError } = await supabase
+    .from('disputes')
+    .select('id, opened_by_membership_id, expires_at, bet_id')
+    .eq('status', 'open')
+
+  if (disputeError) throw disputeError
+
+  for (const dispute of openDisputes ?? []) {
+    if (!dispute.expires_at || asDate(dispute.expires_at).getTime() > now) {
+      continue
+    }
+
+    const { data: relatedBet, error: relatedBetError } = await supabase
+      .from('bets')
+      .select('crew_id')
+      .eq('id', dispute.bet_id)
+      .single()
+
+    if (relatedBetError) throw relatedBetError
+    if (!crewIds.includes(relatedBet.crew_id)) {
+      continue
+    }
+
+    await finalizeDispute(dispute.id, dispute.opened_by_membership_id)
+  }
 }
 
 export async function mutateAppState(actor: RequestActor, action: string, payload: Record<string, any>): Promise<AppMutationPayload> {
@@ -1636,13 +2228,15 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
           .from('bets')
           .select('id,status')
           .eq('night_id', payload.nightId)
-          .in('status', ['open', 'locked', 'disputed'])
+          .in('status', ['open', 'pending_result', 'disputed'])
 
         if (openBets?.length) {
           await supabase
             .from('bets')
             .update({
               status: 'void',
+              pending_result_option_id: null,
+              pending_result_at: null,
               resolved_at: new Date().toISOString(),
               void_reason: 'Night ended without final resolution.',
             })
@@ -1687,9 +2281,30 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
     case 'createBet': {
       const actorMembership = await requireActorMembership(actor, payload.crewId)
       const closeTime = Number(payload.closeTime)
+      const subtype = payload.type === 'h2h'
+        ? null
+        : (
+            payload.subtype ??
+            (Array.isArray(payload.options) && payload.options.length > 2
+              ? 'multi'
+              : payload.line != null
+                ? 'overunder'
+                : 'yesno')
+          )
+      const line = payload.line == null ? null : Number(payload.line)
 
       if (!Array.isArray(payload.options) || payload.options.length < 2) {
         throw new Error('A bet needs at least two options.')
+      }
+
+      if (payload.type === 'prop' && subtype === 'multi' && payload.options.length < 3) {
+        throw new Error('Prediction bets need at least three options.')
+      }
+
+      if (subtype === 'overunder') {
+        if (line == null || !Number.isFinite(line) || line <= 0 || Math.round(line * 2) !== line * 2) {
+          throw new Error('Over/under lines must be positive and use 0.5 increments.')
+        }
       }
 
       const { data: participant } = await supabase
@@ -1701,7 +2316,26 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
         .maybeSingle()
 
       if (!participant) {
-        throw new Error('Only active night participants can create bets.')
+        await ensureNightParticipant(payload.nightId, actorMembership.id)
+      }
+
+      if (payload.type === 'h2h') {
+        if (!payload.challengerMembershipId || payload.challengerMembershipId === actorMembership.id) {
+          throw new Error('Choose another active participant for a head-to-head challenge.')
+        }
+
+        const { data: challengerParticipant, error: challengerParticipantError } = await supabase
+          .from('night_participants')
+          .select('id')
+          .eq('night_id', payload.nightId)
+          .eq('membership_id', payload.challengerMembershipId)
+          .is('left_at', null)
+          .maybeSingle()
+
+        if (challengerParticipantError) throw challengerParticipantError
+        if (!challengerParticipant) {
+          throw new Error('Your opponent has to be part of the current night.')
+        }
       }
 
       const { data: bet, error: betError } = await supabase
@@ -1710,8 +2344,10 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
           crew_id: payload.crewId,
           night_id: payload.nightId,
           type: payload.type,
+          subtype,
           title: payload.title?.trim() || 'Untitled bet',
           description: payload.description?.trim() || null,
+          line,
           status: 'open',
           created_by_membership_id: actorMembership.id,
           challenger_membership_id: payload.challengerMembershipId ?? null,
@@ -1722,7 +2358,11 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
       if (betError) throw betError
 
-      const options = payload.options.map((option: { label: string }, index: number) => ({
+      const optionInputs = subtype === 'overunder' && line != null
+        ? [{ label: `Over ${line}` }, { label: `Under ${line}` }]
+        : payload.options
+
+      const options = optionInputs.map((option: { label: string }, index: number) => ({
         bet_id: bet.id,
         label: option.label.trim(),
         sort_order: index,
@@ -1744,9 +2384,36 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
         metadata: {},
       })
 
-      if (payload.wager && Number(payload.wager) > 0) {
+      if (payload.type === 'h2h') {
+        const h2hStake = Number(payload.wager)
+        if (!payload.challengerMembershipId) {
+          throw new Error('Head-to-head bets require an opponent.')
+        }
+        if (!isValidHalfDrinkAmount(h2hStake)) {
+          throw new Error(`Head-to-head stakes must be in 0.5 drink increments and at most ${MAX_WAGER_DRINKS} drinks.`)
+        }
+
+        const creatorOption = createdOptions?.[0]
+        const challengerOption = createdOptions?.[1]
+        if (creatorOption && challengerOption) {
+          await supabase.from('wagers').upsert([
+            {
+              bet_id: bet.id,
+              bet_option_id: creatorOption.id,
+              membership_id: actorMembership.id,
+              drinks: h2hStake,
+            },
+            {
+              bet_id: bet.id,
+              bet_option_id: challengerOption.id,
+              membership_id: payload.challengerMembershipId,
+              drinks: h2hStake,
+            },
+          ], { onConflict: 'bet_id,membership_id' })
+        }
+      } else if (payload.wager && Number(payload.wager) > 0) {
         if (!isValidHalfDrinkAmount(Number(payload.wager))) {
-          throw new Error('Wagers must be in 0.5 drink increments.')
+          throw new Error(`Wagers must be in 0.5 drink increments and at most ${MAX_WAGER_DRINKS} drinks.`)
         }
 
         const option = createdOptions?.[Number(payload.initialOptionIndex) || 0]
@@ -1779,7 +2446,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       const drinks = Number(payload.drinks)
 
       if (!isValidHalfDrinkAmount(drinks)) {
-        throw new Error('Wagers must be in 0.5 drink increments.')
+        throw new Error(`Wagers must be in 0.5 drink increments and at most ${MAX_WAGER_DRINKS} drinks.`)
       }
 
       const { data: bet, error: betError } = await supabase
@@ -1833,9 +2500,973 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       break
     }
 
+    case 'proposeResult': {
+      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const { data: bet, error: betError } = await supabase
+        .from('bets')
+        .select('*')
+        .eq('id', payload.betId)
+        .single()
+
+      if (betError) throw betError
+      if (bet.status !== 'open') {
+        throw new Error('Only open bets can accept a proposed result.')
+      }
+      if (!canMembershipProposeBetResult(bet, actorMembership.id)) {
+        throw new Error('You are not allowed to propose the result for this bet.')
+      }
+
+      const { data: winningOption, error: optionError } = await supabase
+        .from('bet_options')
+        .select('id')
+        .eq('id', payload.optionId)
+        .eq('bet_id', payload.betId)
+        .single()
+
+      if (optionError || !winningOption) {
+        throw new Error('That option does not belong to this bet.')
+      }
+
+      const { domainBet } = await loadBetResolutionContext(payload.betId)
+      const preview = resolveBetWithParimutuel(domainBet, payload.optionId)
+
+      if (preview.status === 'void') {
+        await persistVoidBet(
+          actorMembership.id,
+          bet,
+          preview.voidReason ?? 'No opposing action',
+          'proposal',
+          'Bet voided when the result was proposed.'
+        )
+        break
+      }
+
+      await supabase.from('bets').update({
+        status: 'pending_result',
+        pending_result_option_id: payload.optionId,
+        pending_result_at: new Date().toISOString(),
+        winning_option_id: null,
+        resolved_at: null,
+        void_reason: null,
+      }).eq('id', payload.betId)
+
+      await supabase.from('bet_status_events').insert({
+        bet_id: payload.betId,
+        actor_membership_id: actorMembership.id,
+        from_status: bet.status,
+        to_status: 'pending_result',
+        note: 'Result proposed.',
+        metadata: { optionId: payload.optionId },
+      })
+
+      await notifyCrewMembers(payload.crewId, {
+        type: 'bet_created',
+        title: `${bet.title} result proposed`,
+        message: `A result is pending confirmation for ${bet.title}.`,
+        payload: { betId: payload.betId, pendingResultOptionId: payload.optionId },
+        excludeMembershipId: actorMembership.id,
+      })
+      break
+    }
+
+    case 'confirmResult': {
+      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const { data: bet, error: betError } = await supabase
+        .from('bets')
+        .select('*')
+        .eq('id', payload.betId)
+        .single()
+
+      if (betError) throw betError
+      if (bet.status === 'disputed') {
+        const { data: openDispute, error: disputeError } = await supabase
+          .from('disputes')
+          .select('id, expires_at')
+          .eq('bet_id', payload.betId)
+          .eq('status', 'open')
+          .maybeSingle()
+
+        if (disputeError) throw disputeError
+        if (!openDispute) {
+          throw new Error('That dispute is no longer active.')
+        }
+        if (openDispute.expires_at && asDate(openDispute.expires_at).getTime() > Date.now()) {
+          throw new Error('The dispute vote is still active.')
+        }
+
+        await finalizeDispute(openDispute.id, actorMembership.id)
+        break
+      }
+
+      if (bet.status !== 'pending_result' || !bet.pending_result_option_id || !bet.pending_result_at) {
+        throw new Error('That bet does not have a pending result to confirm.')
+      }
+      if (asDate(bet.pending_result_at).getTime() + RESULT_CONFIRMATION_WINDOW_MS > Date.now()) {
+        throw new Error('The confirmation window has not finished yet.')
+      }
+
+      await resolveBetAndPersist(
+        actorMembership.id,
+        payload.betId,
+        bet.pending_result_option_id,
+        'confirm',
+        'Bet confirmed after the dispute window elapsed.'
+      )
+      break
+    }
+
+    case 'disputeResult': {
+      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const { data: bet, error: betError } = await supabase
+        .from('bets')
+        .select('*')
+        .eq('id', payload.betId)
+        .single()
+
+      if (betError) throw betError
+      if (bet.status !== 'pending_result' || !bet.pending_result_option_id || !bet.pending_result_at) {
+        throw new Error('Only pending results can be disputed.')
+      }
+      if (asDate(bet.pending_result_at).getTime() + RESULT_CONFIRMATION_WINDOW_MS <= Date.now()) {
+        throw new Error('The dispute window has already expired.')
+      }
+
+      const { data: existingDispute, error: existingDisputeError } = await supabase
+        .from('disputes')
+        .select('id')
+        .eq('bet_id', payload.betId)
+        .eq('status', 'open')
+        .maybeSingle()
+
+      if (existingDisputeError) throw existingDisputeError
+      if (existingDispute) {
+        throw new Error('That result is already under dispute.')
+      }
+
+      await supabase.from('disputes').insert({
+        bet_id: payload.betId,
+        opened_by_membership_id: actorMembership.id,
+        reason: payload.reason?.trim() || null,
+        status: 'open',
+        expires_at: new Date(Date.now() + DISPUTE_VOTE_WINDOW_MS).toISOString(),
+      })
+
+      await supabase.from('bets').update({
+        status: 'disputed',
+      }).eq('id', payload.betId)
+
+      await supabase.from('bet_status_events').insert({
+        bet_id: payload.betId,
+        actor_membership_id: actorMembership.id,
+        from_status: 'pending_result',
+        to_status: 'disputed',
+        note: 'Result disputed.',
+        metadata: { pendingResultOptionId: bet.pending_result_option_id },
+      })
+
+      await notifyCrewMembers(payload.crewId, {
+        type: 'bet_created',
+        title: `${bet.title} disputed`,
+        message: `Crew voting has opened for ${bet.title}.`,
+        payload: { betId: payload.betId },
+        excludeMembershipId: actorMembership.id,
+      })
+      break
+    }
+
+    case 'castDisputeVote': {
+      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const { data: dispute, error: disputeError } = await supabase
+        .from('disputes')
+        .select('*')
+        .eq('id', payload.disputeId)
+        .single()
+
+      if (disputeError) throw disputeError
+      if (dispute.status !== 'open') {
+        throw new Error('That dispute is no longer open.')
+      }
+      if (dispute.expires_at && asDate(dispute.expires_at).getTime() <= Date.now()) {
+        await finalizeDispute(payload.disputeId, actorMembership.id)
+        break
+      }
+
+      const [{ data: bet, error: betError }, { data: option, error: optionError }, { data: wagers, error: wagersError }] = await Promise.all([
+        supabase.from('bets').select('*').eq('id', dispute.bet_id).single(),
+        supabase.from('bet_options').select('id').eq('id', payload.optionId).eq('bet_id', dispute.bet_id).single(),
+        supabase.from('wagers').select('membership_id').eq('bet_id', dispute.bet_id),
+      ])
+
+      if (betError) throw betError
+      if (optionError || !option) throw new Error('That vote option does not belong to this bet.')
+      if (wagersError) throw wagersError
+
+      const eligibleMembershipIds = new Set((wagers ?? []).map((wager: any) => wager.membership_id))
+      if (!eligibleMembershipIds.has(actorMembership.id)) {
+        throw new Error('Only members who wagered on this bet can vote in the dispute.')
+      }
+
+      await supabase.from('dispute_votes').upsert({
+        dispute_id: payload.disputeId,
+        membership_id: actorMembership.id,
+        option_id: payload.optionId,
+        deferred: false,
+      }, { onConflict: 'dispute_id,membership_id' })
+
+      const { data: votes, error: votesError } = await supabase
+        .from('dispute_votes')
+        .select('membership_id')
+        .eq('dispute_id', payload.disputeId)
+
+      if (votesError) throw votesError
+
+      if ((votes ?? []).length >= eligibleMembershipIds.size) {
+        await finalizeDispute(payload.disputeId, actorMembership.id)
+      }
+      break
+    }
+
+    case 'legacyCreateMiniGameChallenge': {
+      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const opponentMembershipId = payload.opponentMembershipId as string | undefined
+      const proposedWager = Number(payload.wager ?? payload.proposedWager)
+      const closeTime = Number(payload.closeTime ?? 5)
+      const boardSize = Number(payload.boardSize ?? BEER_BOMB_BOARD_SIZE)
+
+      if (!payload.nightId) {
+        throw new Error('Mini-game challenges require an active night.')
+      }
+      if (!opponentMembershipId || opponentMembershipId === actorMembership.id) {
+        throw new Error('Choose another player for Beer Bomb.')
+      }
+      if (!isValidHalfDrinkAmount(proposedWager)) {
+        throw new Error(`Beer Bomb wagers must be in 0.5 drink increments and at most ${MAX_WAGER_DRINKS} drinks.`)
+      }
+      if (!Number.isFinite(closeTime) || closeTime <= 0) {
+        throw new Error('Challenge response time must be greater than zero.')
+      }
+      if (!Number.isInteger(boardSize) || boardSize < 4 || boardSize > 12) {
+        throw new Error('Beer Bomb board size must be between 4 and 12 beers.')
+      }
+
+      const [nightResult, opponentResult] = await Promise.all([
+        supabase.from('nights').select('*').eq('id', payload.nightId).single(),
+        supabase
+          .from('crew_memberships')
+          .select('*, profiles(*), guest_identities(*)')
+          .eq('id', opponentMembershipId)
+          .single(),
+      ])
+
+      if (nightResult.error) throw nightResult.error
+      if (opponentResult.error) throw opponentResult.error
+
+      if (nightResult.data.crew_id !== payload.crewId) {
+        throw new Error('That night does not belong to this crew.')
+      }
+      if (!['active', 'winding-down'].includes(nightResult.data.status)) {
+        throw new Error('Beer Bomb challenges can only be created during an active night.')
+      }
+      if (opponentResult.data.crew_id !== payload.crewId || opponentResult.data.status !== 'active') {
+        throw new Error('Your opponent must be an active crew member.')
+      }
+
+      await Promise.all([
+        requireActiveNightParticipant(payload.nightId, actorMembership.id),
+        requireActiveNightParticipant(payload.nightId, opponentMembershipId),
+      ])
+
+      const challengerUser = buildUserFromMembership(actorMembership)
+      const opponentUser = buildUserFromMembership(opponentResult.data)
+      const title = payload.title?.trim() || getMiniGameDefaultTitle(challengerUser, opponentUser)
+
+      const { data: match, error: matchError } = await supabase
+        .from('mini_game_matches')
+        .insert({
+          crew_id: payload.crewId,
+          night_id: payload.nightId,
+          game_key: 'beer_bomb',
+          title,
+          status: 'pending',
+          created_by_membership_id: actorMembership.id,
+          opponent_membership_id: opponentMembershipId,
+          proposed_wager: proposedWager,
+          board_size: boardSize,
+          revealed_slots: [],
+          respond_by_at: new Date(Date.now() + closeTime * 60_000).toISOString(),
+        })
+        .select()
+        .single()
+
+      if (matchError) throw matchError
+
+      await recordMiniGameMatchEvent(match.id, actorMembership.id, 'created', {
+        proposedWager,
+        boardSize,
+        opponentMembershipId,
+      })
+
+      await recordAuditLog(payload.crewId, actorMembership.id, 'mini_game_challenge_created', 'mini_game_match', match.id, {
+        gameKey: 'beer_bomb',
+        proposedWager,
+        opponentMembershipId,
+      })
+
+      await notifyCrewMembers(payload.crewId, {
+        type: 'challenge',
+        title,
+        message: `${challengerUser.name} challenged ${opponentUser.name} to Beer Bomb for ${proposedWager.toFixed(1)} drinks.`,
+        payload: { matchId: match.id, nightId: payload.nightId, gameKey: 'beer_bomb' },
+        excludeMembershipId: actorMembership.id,
+      })
+      break
+    }
+
+    case 'legacyRespondToMiniGameChallenge': {
+      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const decision =
+        payload.decision === 'decline' || payload.accepted === false
+          ? 'decline'
+          : 'accept'
+      const { match, usersByMembershipId } = await loadMiniGameMatchContext(payload.matchId)
+
+      if (match.crew_id !== payload.crewId) {
+        throw new Error('That match does not belong to this crew.')
+      }
+      if (match.status !== 'pending') {
+        throw new Error('That challenge is no longer waiting for a response.')
+      }
+      if (actorMembership.id !== match.opponent_membership_id) {
+        throw new Error('Only the challenged player can respond.')
+      }
+
+      await Promise.all([
+        requireActiveNightParticipant(match.night_id, actorMembership.id),
+        requireActiveNightParticipant(match.night_id, match.created_by_membership_id),
+      ])
+
+      const challengerUser = usersByMembershipId.get(match.created_by_membership_id) ?? buildUserFromMembership(actorMembership)
+      const opponentUser = usersByMembershipId.get(match.opponent_membership_id) ?? buildUserFromMembership(actorMembership)
+
+      if (decision === 'decline') {
+        const declineReason = payload.reason?.trim() || 'Declined by opponent.'
+        await cancelMiniGameMatch(match, actorMembership.id, declineReason, 'declined')
+
+        await recordAuditLog(payload.crewId, actorMembership.id, 'mini_game_challenge_declined', 'mini_game_match', match.id, {
+          gameKey: match.game_key,
+        })
+
+        await notifyCrewMembers(payload.crewId, {
+          type: 'challenge',
+          title: `${match.title} declined`,
+          message: `${opponentUser.name} passed on the Beer Bomb challenge.`,
+          payload: { matchId: match.id, nightId: match.night_id, gameKey: match.game_key },
+          excludeMembershipId: actorMembership.id,
+        })
+        break
+      }
+
+      const startingPlayerMembershipId = Math.random() < 0.5
+        ? match.created_by_membership_id
+        : match.opponent_membership_id
+      const hiddenSlotIndex = Math.floor(Math.random() * Number(match.board_size ?? BEER_BOMB_BOARD_SIZE))
+      const acceptedAt = new Date().toISOString()
+
+      await supabase
+        .from('mini_game_matches')
+        .update({
+          status: 'active',
+          agreed_wager: match.proposed_wager,
+          hidden_slot_index: hiddenSlotIndex,
+          accepted_at: acceptedAt,
+          starting_player_membership_id: startingPlayerMembershipId,
+          current_turn_membership_id: startingPlayerMembershipId,
+          updated_at: acceptedAt,
+        })
+        .eq('id', match.id)
+
+      await recordMiniGameMatchEvent(match.id, actorMembership.id, 'accepted', {
+        startingPlayerMembershipId,
+      })
+
+      await recordAuditLog(payload.crewId, actorMembership.id, 'mini_game_challenge_accepted', 'mini_game_match', match.id, {
+        gameKey: match.game_key,
+        startingPlayerMembershipId,
+      })
+
+      await notifyCrewMembers(payload.crewId, {
+        type: 'challenge',
+        title: `${match.title} is live`,
+        message: `${opponentUser.name} accepted ${challengerUser.name}'s Beer Bomb challenge.`,
+        payload: { matchId: match.id, nightId: match.night_id, gameKey: match.game_key },
+        excludeMembershipId: actorMembership.id,
+      })
+      break
+    }
+
+    case 'legacyCancelMiniGameChallenge': {
+      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const { match } = await loadMiniGameMatchContext(payload.matchId)
+
+      if (match.crew_id !== payload.crewId) {
+        throw new Error('That match does not belong to this crew.')
+      }
+      if (match.status !== 'pending') {
+        throw new Error('Only pending Beer Bomb challenges can be cancelled.')
+      }
+      if (actorMembership.id !== match.created_by_membership_id) {
+        throw new Error('Only the challenger can cancel this match.')
+      }
+
+      await cancelMiniGameMatch(match, actorMembership.id, 'Cancelled by challenger.', 'cancelled')
+
+      await recordAuditLog(payload.crewId, actorMembership.id, 'mini_game_challenge_cancelled', 'mini_game_match', match.id, {
+        gameKey: match.game_key,
+      })
+
+      await notifyCrewMembers(payload.crewId, {
+        type: 'challenge',
+        title: `${match.title} cancelled`,
+        message: 'The Beer Bomb challenge was cancelled before it started.',
+        payload: { matchId: match.id, nightId: match.night_id, gameKey: match.game_key },
+        excludeMembershipId: actorMembership.id,
+      })
+      break
+    }
+
+    case 'legacyTakeMiniGameTurn': {
+      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const slotIndex = Number(payload.slotIndex)
+      const { match, usersByMembershipId } = await loadMiniGameMatchContext(payload.matchId)
+      const revealedSlots = normalizeMiniGameRevealedSlots(match.revealed_slots)
+
+      if (match.crew_id !== payload.crewId) {
+        throw new Error('That match does not belong to this crew.')
+      }
+      if (match.status !== 'active') {
+        throw new Error('That Beer Bomb match is not active.')
+      }
+      if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= Number(match.board_size ?? BEER_BOMB_BOARD_SIZE)) {
+        throw new Error('Choose a valid beer slot.')
+      }
+      if (revealedSlots.includes(slotIndex)) {
+        throw new Error('That beer has already been tapped.')
+      }
+      if (actorMembership.id !== match.current_turn_membership_id) {
+        throw new Error('It is not your turn.')
+      }
+
+      await Promise.all([
+        requireActiveNightParticipant(match.night_id, actorMembership.id),
+        requireActiveNightParticipant(
+          match.night_id,
+          actorMembership.id === match.created_by_membership_id ? match.opponent_membership_id : match.created_by_membership_id
+        ),
+      ])
+
+      const nextRevealedSlots = [...revealedSlots, slotIndex]
+      const hitBomb = slotIndex === Number(match.hidden_slot_index)
+      const winnerMembershipId = actorMembership.id === match.created_by_membership_id
+        ? match.opponent_membership_id
+        : match.created_by_membership_id
+      const completedAt = new Date().toISOString()
+
+      if (hitBomb) {
+        await supabase
+          .from('mini_game_matches')
+          .update({
+            status: 'completed',
+            revealed_slots: nextRevealedSlots,
+            winner_membership_id: winnerMembershipId,
+            loser_membership_id: actorMembership.id,
+            current_turn_membership_id: null,
+            completed_at: completedAt,
+            updated_at: completedAt,
+          })
+          .eq('id', match.id)
+
+        await supabase.from('ledger_events').insert({
+          crew_id: match.crew_id,
+          night_id: match.night_id,
+          bet_id: null,
+          from_membership_id: actorMembership.id,
+          to_membership_id: winnerMembershipId,
+          event_type: 'mini_game_result',
+          drinks: Number(match.agreed_wager ?? match.proposed_wager),
+          metadata: {
+            matchId: match.id,
+            gameKey: match.game_key,
+            losingSlotIndex: slotIndex,
+          },
+        })
+
+        const winnerUser = usersByMembershipId.get(winnerMembershipId)
+        const loserUser = usersByMembershipId.get(actorMembership.id)
+
+        await recordMiniGameMatchEvent(match.id, actorMembership.id, 'completed', {
+          slotIndex,
+          winnerMembershipId,
+          loserMembershipId: actorMembership.id,
+        })
+
+        await recordAuditLog(payload.crewId, actorMembership.id, 'mini_game_match_completed', 'mini_game_match', match.id, {
+          gameKey: match.game_key,
+          winnerMembershipId,
+          loserMembershipId: actorMembership.id,
+          wager: Number(match.agreed_wager ?? match.proposed_wager),
+        })
+
+        await notifyCrewMembers(payload.crewId, {
+          type: 'challenge',
+          title: `${match.title} settled`,
+          message: `${winnerUser?.name ?? 'A player'} beat ${loserUser?.name ?? 'their opponent'} in Beer Bomb.`,
+          payload: { matchId: match.id, nightId: match.night_id, gameKey: match.game_key },
+          excludeMembershipId: actorMembership.id,
+        })
+      } else {
+        const nextTurnMembershipId = winnerMembershipId
+
+        await supabase
+          .from('mini_game_matches')
+          .update({
+            revealed_slots: nextRevealedSlots,
+            current_turn_membership_id: nextTurnMembershipId,
+            updated_at: completedAt,
+          })
+          .eq('id', match.id)
+
+        await recordMiniGameMatchEvent(match.id, actorMembership.id, 'turn_taken', {
+          slotIndex,
+          nextTurnMembershipId,
+        })
+      }
+
+      break
+    }
+
     case 'resolveBet': {
       const actorMembership = await requireActorMembership(actor, payload.crewId)
-      await resolveBetAndPersist(actorMembership, payload.betId, payload.winningOptionId)
+      const optionId = payload.winningOptionId ?? payload.optionId
+      if (!optionId) {
+        throw new Error('A winning option is required.')
+      }
+
+      const { data: bet, error: betError } = await supabase
+        .from('bets')
+        .select('status')
+        .eq('id', payload.betId)
+        .single()
+
+      if (betError) throw betError
+
+      if (bet.status === 'pending_result') {
+        throw new Error('Use confirmResult after the dispute window elapses.')
+      }
+
+      if (bet.status !== 'open') {
+        throw new Error('Only open bets can accept a proposed result.')
+      }
+
+      const { data: fullBet, error: fullBetError } = await supabase
+        .from('bets')
+        .select('*')
+        .eq('id', payload.betId)
+        .single()
+
+      if (fullBetError) throw fullBetError
+      if (!canMembershipProposeBetResult(fullBet, actorMembership.id)) {
+        throw new Error('You are not allowed to propose the result for this bet.')
+      }
+
+      const { domainBet } = await loadBetResolutionContext(payload.betId)
+      const preview = resolveBetWithParimutuel(domainBet, optionId)
+
+      if (preview.status === 'void') {
+        await persistVoidBet(
+          actorMembership.id,
+          fullBet,
+          preview.voidReason ?? 'No opposing action',
+          'proposal',
+          'Bet voided when the result was proposed.'
+        )
+        break
+      }
+
+      await supabase.from('bets').update({
+        status: 'pending_result',
+        pending_result_option_id: optionId,
+        pending_result_at: new Date().toISOString(),
+        winning_option_id: null,
+        resolved_at: null,
+        void_reason: null,
+      }).eq('id', payload.betId)
+
+      await supabase.from('bet_status_events').insert({
+        bet_id: payload.betId,
+        actor_membership_id: actorMembership.id,
+        from_status: 'open',
+        to_status: 'pending_result',
+        note: 'Result proposed via resolveBet compatibility route.',
+        metadata: { optionId },
+      })
+      break
+    }
+
+    case 'createMiniGameChallenge': {
+      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      await requireActiveNightParticipant(payload.nightId, actorMembership.id)
+
+      if ((payload.gameKey ?? 'beer_bomb') !== 'beer_bomb') {
+        throw new Error('Unsupported mini game.')
+      }
+
+      const proposedWager = Number(payload.proposedWager ?? payload.wager)
+      if (!isValidHalfDrinkAmount(proposedWager)) {
+        throw new Error('Beer Bomb wagers must be in 0.5 drink increments and at most 5 drinks.')
+      }
+
+      if (!payload.opponentMembershipId || payload.opponentMembershipId === actorMembership.id) {
+        throw new Error('Choose another active participant for the challenge.')
+      }
+
+      const { data: opponentMembership, error: opponentMembershipError } = await supabase
+        .from('crew_memberships')
+        .select('*, profiles(*), guest_identities(*)')
+        .eq('id', payload.opponentMembershipId)
+        .eq('crew_id', payload.crewId)
+        .single()
+
+      if (opponentMembershipError) throw opponentMembershipError
+      if (opponentMembership.status !== 'active') {
+        throw new Error('Your opponent must be an active crew member.')
+      }
+
+      await requireActiveNightParticipant(payload.nightId, opponentMembership.id)
+
+      const title = payload.title?.trim() || 'Beer Bomb'
+      const { data: match, error: matchError } = await supabase
+        .from('mini_game_matches')
+        .insert({
+          crew_id: payload.crewId,
+          night_id: payload.nightId,
+          game_key: 'beer_bomb',
+          title,
+          status: 'pending',
+          created_by_membership_id: actorMembership.id,
+          opponent_membership_id: opponentMembership.id,
+          proposed_wager: proposedWager,
+          board_size: BEER_BOMB_BOARD_SIZE,
+          hidden_slot_index: Math.floor(Math.random() * BEER_BOMB_BOARD_SIZE),
+          revealed_slots: [],
+          metadata: payload.metadata ?? {},
+        })
+        .select()
+        .single()
+
+      if (matchError) throw matchError
+
+      await recordMiniGameMatchEvent(match.id, actorMembership.id, 'challenge_created', {
+        gameKey: 'beer_bomb',
+        proposedWager,
+      })
+
+      const challengerUser = buildUserFromMembership(actorMembership)
+      const opponentUser = buildUserFromMembership(opponentMembership)
+
+      await recordAuditLog(payload.crewId, actorMembership.id, 'mini_game_challenge_created', 'mini_game_match', match.id, {
+        gameKey: 'beer_bomb',
+        proposedWager,
+        opponentMembershipId: opponentMembership.id,
+      })
+
+      await notifyCrewMembers(payload.crewId, {
+        type: 'challenge',
+        title: `${challengerUser.name} challenged ${opponentUser.name}`,
+        message: `${title} for ${formatDrinks(proposedWager)} drinks.`,
+        payload: {
+          matchId: match.id,
+          gameKey: 'beer_bomb',
+          nightId: payload.nightId,
+          proposedWager,
+          status: 'pending',
+        },
+        excludeMembershipId: actorMembership.id,
+      })
+      break
+    }
+
+    case 'respondToMiniGameChallenge': {
+      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const { match, usersByMembershipId } = await loadMiniGameMatchContext(payload.matchId)
+
+      if (match.crew_id !== payload.crewId) {
+        throw new Error('That challenge does not belong to this crew.')
+      }
+
+      await requireActiveNightParticipant(match.night_id, actorMembership.id)
+
+      if (match.status !== 'pending') {
+        throw new Error('That challenge is no longer pending.')
+      }
+
+      if (match.opponent_membership_id !== actorMembership.id) {
+        throw new Error('Only the challenged player can respond.')
+      }
+
+      const challengerUser = usersByMembershipId.get(match.created_by_membership_id) ?? buildUserFromMembership(actorMembership)
+      const opponentUser = usersByMembershipId.get(match.opponent_membership_id) ?? buildUserFromMembership(actorMembership)
+
+      if (payload.accepted === false) {
+        const { error: declineError } = await supabase
+          .from('mini_game_matches')
+          .update({
+            status: 'declined',
+            current_turn_membership_id: null,
+            starting_player_membership_id: null,
+            agreed_wager: null,
+            declined_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', match.id)
+          .eq('status', 'pending')
+
+        if (declineError) throw declineError
+
+        await recordMiniGameMatchEvent(match.id, actorMembership.id, 'challenge_declined', {})
+        await recordAuditLog(payload.crewId, actorMembership.id, 'mini_game_challenge_declined', 'mini_game_match', match.id, {})
+
+        await notifyCrewMembers(payload.crewId, {
+          type: 'challenge',
+          title: `${opponentUser.name} declined Beer Bomb`,
+          message: `${match.title} was declined.`,
+          payload: {
+            matchId: match.id,
+            gameKey: match.game_key,
+            status: 'declined',
+          },
+          excludeMembershipId: actorMembership.id,
+        })
+        break
+      }
+
+      const startingPlayerMembershipId =
+        Math.random() < 0.5 ? match.created_by_membership_id : match.opponent_membership_id
+
+      const { error: acceptError } = await supabase
+        .from('mini_game_matches')
+        .update({
+          status: 'active',
+          agreed_wager: match.proposed_wager,
+          accepted_at: new Date().toISOString(),
+          starting_player_membership_id: startingPlayerMembershipId,
+          current_turn_membership_id: startingPlayerMembershipId,
+          declined_at: null,
+          cancelled_at: null,
+          completed_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', match.id)
+        .eq('status', 'pending')
+
+      if (acceptError) throw acceptError
+
+      await recordMiniGameMatchEvent(match.id, actorMembership.id, 'challenge_accepted', {
+        startingPlayerMembershipId,
+        agreedWager: match.proposed_wager,
+      })
+      await recordAuditLog(payload.crewId, actorMembership.id, 'mini_game_challenge_accepted', 'mini_game_match', match.id, {
+        startingPlayerMembershipId,
+        agreedWager: match.proposed_wager,
+      })
+
+      const startingPlayerUser = usersByMembershipId.get(startingPlayerMembershipId) ?? challengerUser
+
+      await notifyCrewMembers(payload.crewId, {
+        type: 'challenge',
+        title: `${opponentUser.name} accepted Beer Bomb`,
+        message: `${startingPlayerUser.name} goes first for ${formatDrinks(match.proposed_wager)} drinks.`,
+        payload: {
+          matchId: match.id,
+          gameKey: match.game_key,
+          status: 'active',
+          agreedWager: Number(match.proposed_wager),
+          startingPlayerMembershipId,
+        },
+        excludeMembershipId: actorMembership.id,
+      })
+      break
+    }
+
+    case 'takeMiniGameTurn': {
+      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const { match, usersByMembershipId } = await loadMiniGameMatchContext(payload.matchId)
+
+      if (match.crew_id !== payload.crewId) {
+        throw new Error('That challenge does not belong to this crew.')
+      }
+
+      await requireActiveNightParticipant(match.night_id, actorMembership.id)
+
+      if (match.status !== 'active') {
+        throw new Error('That match is not active.')
+      }
+
+      if (match.current_turn_membership_id !== actorMembership.id) {
+        throw new Error('It is not your turn.')
+      }
+
+      const slotIndex = Number(payload.slotIndex)
+      const boardSize = Number(match.board_size ?? BEER_BOMB_BOARD_SIZE)
+      if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= boardSize) {
+        throw new Error('Choose a valid beer.')
+      }
+
+      const revealedSlots = normalizeMiniGameRevealedSlots(match.revealed_slots)
+      if (revealedSlots.includes(slotIndex)) {
+        throw new Error('That beer has already been tapped.')
+      }
+
+      const nextTurnMembershipId =
+        actorMembership.id === match.created_by_membership_id
+          ? match.opponent_membership_id
+          : match.created_by_membership_id
+
+      const now = new Date().toISOString()
+      const nextRevealedSlots = [...revealedSlots, slotIndex]
+
+      if (Number(match.hidden_slot_index) === slotIndex) {
+        const winnerMembershipId = nextTurnMembershipId
+        const loserMembershipId = actorMembership.id
+        const winnerUser = usersByMembershipId.get(winnerMembershipId) ?? buildUserFromMembership(actorMembership)
+        const loserUser = usersByMembershipId.get(loserMembershipId) ?? buildUserFromMembership(actorMembership)
+        const drinks = Number(match.agreed_wager ?? match.proposed_wager)
+
+        const { error: completeError } = await supabase
+          .from('mini_game_matches')
+          .update({
+            status: 'completed',
+            current_turn_membership_id: null,
+            winner_membership_id: winnerMembershipId,
+            loser_membership_id: loserMembershipId,
+            completed_at: now,
+            revealed_slots: nextRevealedSlots,
+            updated_at: now,
+          })
+          .eq('id', match.id)
+          .eq('status', 'active')
+
+        if (completeError) throw completeError
+
+        await recordMiniGameMatchEvent(match.id, actorMembership.id, 'turn_taken', {
+          slotIndex,
+          result: 'bomb',
+        })
+        await recordMiniGameMatchEvent(match.id, actorMembership.id, 'match_completed', {
+          winnerMembershipId,
+          loserMembershipId,
+          slotIndex,
+          drinks,
+        })
+
+        await supabase.from('ledger_events').insert({
+          crew_id: payload.crewId,
+          night_id: match.night_id,
+          bet_id: null,
+          from_membership_id: loserMembershipId,
+          to_membership_id: winnerMembershipId,
+          event_type: 'mini_game_result',
+          drinks,
+          metadata: {
+            matchId: match.id,
+            gameKey: match.game_key,
+            slotIndex,
+          },
+        })
+
+        await recordAuditLog(payload.crewId, actorMembership.id, 'mini_game_completed', 'mini_game_match', match.id, {
+          slotIndex,
+          winnerMembershipId,
+          loserMembershipId,
+          drinks,
+        })
+
+        await notifyCrewMembers(payload.crewId, {
+          type: 'challenge',
+          title: `${winnerUser.name} won Beer Bomb`,
+          message: `${loserUser.name} hit the bomb for ${formatDrinks(drinks)} drinks.`,
+          payload: {
+            matchId: match.id,
+            gameKey: match.game_key,
+            status: 'completed',
+            slotIndex,
+            winnerMembershipId,
+            loserMembershipId,
+            drinks,
+          },
+        })
+        break
+      }
+
+      const { error: turnError } = await supabase
+        .from('mini_game_matches')
+        .update({
+          current_turn_membership_id: nextTurnMembershipId,
+          revealed_slots: nextRevealedSlots,
+          updated_at: now,
+        })
+        .eq('id', match.id)
+        .eq('status', 'active')
+        .eq('current_turn_membership_id', actorMembership.id)
+
+      if (turnError) throw turnError
+
+      await recordMiniGameMatchEvent(match.id, actorMembership.id, 'turn_taken', {
+        slotIndex,
+        result: 'safe',
+        nextTurnMembershipId,
+      })
+      await recordAuditLog(payload.crewId, actorMembership.id, 'mini_game_turn_taken', 'mini_game_match', match.id, {
+        slotIndex,
+        nextTurnMembershipId,
+      })
+      break
+    }
+
+    case 'cancelMiniGameChallenge': {
+      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const { match } = await loadMiniGameMatchContext(payload.matchId)
+
+      if (match.crew_id !== payload.crewId) {
+        throw new Error('That challenge does not belong to this crew.')
+      }
+
+      await requireActiveNightParticipant(match.night_id, actorMembership.id)
+
+      if (match.status !== 'pending') {
+        throw new Error('Only pending challenges can be cancelled.')
+      }
+
+      if (match.created_by_membership_id !== actorMembership.id) {
+        throw new Error('Only the challenger can cancel this challenge.')
+      }
+
+      const { error: cancelError } = await supabase
+        .from('mini_game_matches')
+        .update({
+          status: 'cancelled',
+          current_turn_membership_id: null,
+          starting_player_membership_id: null,
+          agreed_wager: null,
+          cancelled_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', match.id)
+        .eq('status', 'pending')
+
+      if (cancelError) throw cancelError
+
+      await recordMiniGameMatchEvent(match.id, actorMembership.id, 'challenge_cancelled', {})
+      await recordAuditLog(payload.crewId, actorMembership.id, 'mini_game_challenge_cancelled', 'mini_game_match', match.id, {})
       break
     }
 

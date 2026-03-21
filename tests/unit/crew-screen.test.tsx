@@ -44,6 +44,7 @@ function renderCrewScreen(props: Partial<ComponentProps<typeof CrewScreen>> = {}
       status: 'active',
       startedAt: new Date('2026-03-21T18:00:00.000Z'),
       bets: [],
+      miniGameMatches: [],
       participants: [
         {
           id: 'profile-1',
@@ -133,6 +134,7 @@ describe('CrewScreen', () => {
           status: 'active',
           startedAt: new Date('2026-03-21T18:00:00.000Z'),
           bets: [],
+          miniGameMatches: [],
           participants: [
             {
               id: 'profile-1',

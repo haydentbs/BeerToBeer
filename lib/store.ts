@@ -10,20 +10,26 @@ export interface User {
 }
 
 export type CrewRole = 'creator' | 'admin' | 'member' | 'guest'
+export type BetSubtype = 'yesno' | 'overunder' | 'multi' | null
 
 export interface Bet {
   id: string
   type: 'prop' | 'h2h'
+  subtype: BetSubtype
   title: string
   description?: string
+  line?: number
   creator: User
   challenger?: User
-  status: 'open' | 'locked' | 'resolved' | 'disputed' | 'void'
+  status: 'open' | 'pending_result' | 'disputed' | 'resolved' | 'void' | 'cancelled'
   closesAt: Date
   createdAt: Date
   options: BetOption[]
   totalPool: number
   result?: string
+  pendingResultOptionId?: string
+  pendingResultAt?: Date
+  voidReason?: string
   memberOutcomes?: BetMemberOutcome[]
 }
 
@@ -54,6 +60,32 @@ export interface LedgerEntry {
   drinks: number
   settled: number
   betId?: string
+  matchId?: string
+}
+
+export type MiniGameKey = 'beer_bomb'
+export type MiniGameMatchStatus = 'pending' | 'active' | 'declined' | 'cancelled' | 'completed'
+export type BeerBombSlotState = 'idle' | 'draining' | 'safe-empty' | 'bomb-hit'
+
+export interface MiniGameMatch {
+  id: string
+  gameKey: MiniGameKey
+  title: string
+  status: MiniGameMatchStatus
+  challenger: User
+  opponent: User
+  proposedWager: number
+  agreedWager?: number
+  boardSize: number
+  revealedSlots: number[]
+  createdAt: Date
+  updatedAt: Date
+  startingPlayer?: User
+  currentTurn?: User
+  winner?: User
+  loser?: User
+  completedAt?: Date
+  bombSlotIndex?: number
 }
 
 export interface Night {
@@ -62,6 +94,7 @@ export interface Night {
   status: 'active' | 'winding-down' | 'closed'
   startedAt: Date
   bets: Bet[]
+  miniGameMatches: MiniGameMatch[]
   participants: User[]
   drinkThemeOverride?: 'beer' | 'cocktails' | 'shots' | 'tequila' | 'wine' | 'whiskey'
 }
@@ -168,8 +201,10 @@ export const mockBets: Bet[] = [
   {
     id: '1',
     type: 'prop',
+    subtype: 'overunder',
     title: 'Will Dave mention his ex?',
     description: 'Over/under 2.5 times in the next hour',
+    line: 2.5,
     creator: mockUsers[3],
     status: 'open',
     closesAt: new Date(Date.now() + 1000 * 60 * 45),
@@ -198,6 +233,7 @@ export const mockBets: Bet[] = [
   {
     id: '2',
     type: 'h2h',
+    subtype: null,
     title: 'Pool match',
     creator: mockUsers[2],
     challenger: mockUsers[0],
@@ -229,6 +265,7 @@ export const mockBets: Bet[] = [
   {
     id: '3',
     type: 'prop',
+    subtype: 'multi',
     title: 'First to order food?',
     creator: mockUsers[1],
     status: 'open',
@@ -245,6 +282,7 @@ export const mockBets: Bet[] = [
   {
     id: '4',
     type: 'h2h',
+    subtype: null,
     title: 'Darts showdown',
     creator: mockUsers[1],
     challenger: mockUsers[3],
@@ -261,6 +299,7 @@ export const mockBets: Bet[] = [
   {
     id: '5',
     type: 'prop',
+    subtype: 'yesno',
     title: 'Will someone get kicked out?',
     creator: mockUsers[5],
     status: 'resolved',
@@ -308,6 +347,7 @@ export const mockCurrentNight: Night = {
   status: 'active',
   startedAt: new Date(Date.now() - 1000 * 60 * 90),
   bets: mockBets,
+  miniGameMatches: [],
   participants: mockUsers,
 }
 
@@ -484,7 +524,7 @@ export function recomputeBetTotals(bet: Bet): Bet {
 }
 
 export function isValidWagerAmount(drinks: number) {
-  return drinks > 0 && Number.isInteger(drinks * 2)
+  return Number.isFinite(drinks) && drinks > 0 && drinks <= 5 && Number.isInteger(drinks * 2)
 }
 
 export function getBetOptionById(bet: Bet, optionId: string) {
@@ -531,7 +571,7 @@ export function projectBetPayout(bet: Bet, optionId: string, stake: number, user
   }
 
   return fromCents(
-    Math.round((toCents(stake) * toCents(totalLosingStake)) / toCents(totalWinningStake))
+    Math.floor((toCents(stake) * toCents(totalLosingStake)) / toCents(totalWinningStake))
   )
 }
 
@@ -587,6 +627,7 @@ export function resolveBetWithParimutuel(bet: Bet, winningOptionId: string): Bet
       ...recomputedBet,
       status: 'void',
       result: undefined,
+      voidReason: 'No opposing action',
       memberOutcomes: [],
     }
   }
@@ -599,6 +640,7 @@ export function resolveBetWithParimutuel(bet: Bet, winningOptionId: string): Bet
       ...recomputedBet,
       status: 'void',
       result: undefined,
+      voidReason: totalWinningStakeCents <= 0 ? 'Winning option had no wagers' : 'No opposing action',
       memberOutcomes: [],
     }
   }
@@ -613,14 +655,12 @@ export function resolveBetWithParimutuel(bet: Bet, winningOptionId: string): Bet
     allocatedWinnerProfitCents += cents
   }
 
-  let remainderCents = totalLosingStakeCents - allocatedWinnerProfitCents
-  for (const wager of winningWagers) {
-    if (remainderCents <= 0) {
-      break
-    }
-
-    winnerProfitCents.set(wager.id, (winnerProfitCents.get(wager.id) ?? 0) + 1)
-    remainderCents -= 1
+  const remainderCents = totalLosingStakeCents - allocatedWinnerProfitCents
+  if (remainderCents > 0 && winningWagers[0]) {
+    winnerProfitCents.set(
+      winningWagers[0].id,
+      (winnerProfitCents.get(winningWagers[0].id) ?? 0) + remainderCents
+    )
   }
 
   const memberOutcomes: BetMemberOutcome[] = []
@@ -707,11 +747,91 @@ export function deriveLedgerEntriesFromBets(bets: Bet[]): LedgerEntry[] {
   return entries
 }
 
+export const BEER_BOMB_BOARD_SIZE = 8
+
+export function createBeerBombSlotStates(match: Pick<MiniGameMatch, 'boardSize' | 'revealedSlots' | 'status' | 'bombSlotIndex'>): BeerBombSlotState[] {
+  const states: BeerBombSlotState[] = Array.from({ length: match.boardSize }, () => 'idle')
+
+  match.revealedSlots.forEach((slotIndex, revealIndex) => {
+    if (slotIndex < 0 || slotIndex >= match.boardSize) {
+      return
+    }
+
+    const isBombHit = match.status === 'completed' && match.bombSlotIndex === slotIndex
+    if (isBombHit) {
+      states[slotIndex] = 'bomb-hit'
+      return
+    }
+
+    states[slotIndex] = revealIndex === match.revealedSlots.length - 1 && match.status === 'active'
+      ? 'draining'
+      : 'safe-empty'
+  })
+
+  return states
+}
+
+export function canTakeBeerBombTurn(match: Pick<MiniGameMatch, 'status' | 'boardSize' | 'revealedSlots' | 'currentTurn'>, membershipId: string) {
+  if (match.status !== 'active') {
+    return false
+  }
+
+  if (match.currentTurn?.membershipId !== membershipId) {
+    return false
+  }
+
+  return match.revealedSlots.length < match.boardSize
+}
+
+export function getNextBeerBombTurn(match: Pick<MiniGameMatch, 'challenger' | 'opponent' | 'currentTurn'>) {
+  if (!match.currentTurn) {
+    return match.challenger
+  }
+
+  return match.currentTurn.membershipId === match.challenger.membershipId
+    ? match.opponent
+    : match.challenger
+}
+
+export function getBeerBombTurnLabel(match: Pick<MiniGameMatch, 'status' | 'challenger' | 'opponent' | 'currentTurn' | 'winner' | 'loser'>, currentUserId?: string) {
+  if (match.status === 'pending') {
+    return 'Awaiting response'
+  }
+
+  if (match.status === 'declined') {
+    return 'Challenge declined'
+  }
+
+  if (match.status === 'cancelled') {
+    return 'Challenge cancelled'
+  }
+
+  if (match.status === 'completed') {
+    if (match.winner?.id === currentUserId) {
+      return 'You won'
+    }
+
+    if (match.loser?.id === currentUserId) {
+      return 'You lost'
+    }
+
+    return `${match.winner?.name ?? 'Winner'} won`
+  }
+
+  if (!match.currentTurn) {
+    return 'Match loading'
+  }
+
+  return match.currentTurn.id === currentUserId ? 'Your turn' : `${match.currentTurn.name}'s turn`
+}
+
 export function createBetFromDraft(input: {
   creator: User
   type: Bet['type']
+  subtype: Bet['subtype']
   title: string
   description?: string
+  line?: number
   challenger?: User
   options: Array<{ label: string }>
   closeTimeMinutes: number
@@ -719,8 +839,10 @@ export function createBetFromDraft(input: {
   return recomputeBetTotals({
     id: `bet-${Date.now()}`,
     type: input.type,
+    subtype: input.subtype,
     title: input.title,
     description: input.description,
+    line: input.line,
     creator: input.creator,
     challenger: input.challenger,
     status: 'open',

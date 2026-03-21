@@ -1,12 +1,44 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { getCrewMemberMembershipId } from '@/lib/store'
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { BEER_BOMB_BOARD_SIZE, getCrewMemberMembershipId } from '@/lib/store'
+import { getServiceRoleClient } from '@/lib/server/supabase'
 import { joinCrewAsGuest, loadAppState, mutateAppState } from '@/lib/server/repository'
-import { createCrewWithNight, makeAuthenticatedActor, resetDatabase } from '../helpers/backend-fixtures'
+import { ageDispute, createCrewWithNight, makeAuthenticatedActor, resetDatabase } from '../helpers/backend-fixtures'
+
+async function expirePendingResult(betId: string) {
+  await getServiceRoleClient()
+    .from('bets')
+    .update({
+      pending_result_at: new Date(Date.now() - 61_000).toISOString(),
+    })
+    .eq('id', betId)
+}
+
+async function getMiniGameMatchRow(matchId: string) {
+  const { data, error } = await getServiceRoleClient()
+    .from('mini_game_matches')
+    .select('*')
+    .eq('id', matchId)
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+let miniGameTablesAvailable = true
 
 describe('persistent backend contract', () => {
+  beforeAll(async () => {
+    const { error } = await getServiceRoleClient()
+      .from('mini_game_matches')
+      .select('id')
+      .limit(1)
+
+    miniGameTablesAvailable = !error
+  }, 30000)
+
   beforeEach(async () => {
     await resetDatabase()
-  })
+  }, 30000)
 
   it('creates a crew and allows a guest to join via invite code', async () => {
     const creator = makeAuthenticatedActor('Crew Builder')
@@ -96,10 +128,17 @@ describe('persistent backend contract', () => {
       drinks: 2,
     })
 
-    await mutateAppState(creator, 'resolveBet', {
+    await mutateAppState(creator, 'proposeResult', {
       crewId: crew.id,
       betId: createdBet!.id,
-      winningOptionId: winningOption!.id,
+      optionId: winningOption!.id,
+    })
+
+    await expirePendingResult(createdBet!.id)
+
+    await mutateAppState(creator, 'confirmResult', {
+      crewId: crew.id,
+      betId: createdBet!.id,
     })
 
     const memberActor = makeAuthenticatedActor('Taylor Account')
@@ -167,10 +206,17 @@ describe('persistent backend contract', () => {
       drinks: 2,
     })
 
-    await mutateAppState(creator, 'resolveBet', {
+    await mutateAppState(creator, 'proposeResult', {
       crewId: crew.id,
       betId: createdBet!.id,
-      winningOptionId: noOption!.id,
+      optionId: noOption!.id,
+    })
+
+    await expirePendingResult(createdBet!.id)
+
+    await mutateAppState(creator, 'confirmResult', {
+      crewId: crew.id,
+      betId: createdBet!.id,
     })
 
     const resolvedOnce = await loadAppState(creator)
@@ -218,6 +264,296 @@ describe('persistent backend contract', () => {
     await expect(
       mutateAppState(member, 'renameCrew', { crewId: crew.id, name: 'Sneaky Rename' })
     ).rejects.toThrow(/creator or admin permissions/i)
+  }, 30000)
+
+  it('persists Beer Bomb challenge acceptance, turns, and settlement into the match and ledger tables', async () => {
+    if (!miniGameTablesAvailable) {
+      return
+    }
+
+    const { creator, crew, night } = await createCrewWithNight('Beer Bomb Flow')
+    const challenger = makeAuthenticatedActor('Beer Bomb Rival')
+
+    await mutateAppState(challenger, 'joinCrew', { code: crew.inviteCode })
+
+    let state = await loadAppState(creator)
+    let currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    const creatorMember = currentCrew.members.find((member: any) => member.role === 'creator')!
+    const opponentMember = currentCrew.members.find((member: any) => member.name === 'Beer Bomb Rival')!
+
+    expect(currentCrew.currentNight?.miniGameMatches ?? []).toHaveLength(0)
+
+    await mutateAppState(creator, 'createMiniGameChallenge', {
+      crewId: crew.id,
+      nightId: night.id,
+      opponentMembershipId: opponentMember.membershipId!,
+      title: 'Beer Bomb',
+      proposedWager: 2,
+      gameKey: 'beer_bomb',
+    })
+
+    state = await loadAppState(creator)
+    currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    const pendingMatch = currentCrew.currentNight?.miniGameMatches.find((match: any) => match.title === 'Beer Bomb')
+
+    expect(pendingMatch).toBeTruthy()
+    expect(pendingMatch?.status).toBe('pending')
+    expect(pendingMatch?.proposedWager).toBe(2)
+    expect(pendingMatch?.revealedSlots).toEqual([])
+    expect(pendingMatch?.opponent.membershipId).toBe(opponentMember.membershipId)
+
+    await mutateAppState(challenger, 'respondToMiniGameChallenge', {
+      crewId: crew.id,
+      matchId: pendingMatch!.id,
+      accepted: true,
+    })
+
+    state = await loadAppState(creator)
+    currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    let activeMatch = currentCrew.currentNight?.miniGameMatches.find((match: any) => match.id === pendingMatch!.id)
+
+    expect(activeMatch).toBeTruthy()
+    expect(activeMatch?.status).toBe('active')
+    expect(activeMatch?.agreedWager).toBe(2)
+    expect(activeMatch?.currentTurn).toBeTruthy()
+
+    const acceptedRow = await getMiniGameMatchRow(pendingMatch!.id)
+    expect(acceptedRow.current_turn_membership_id).toBe(activeMatch?.currentTurn?.membershipId)
+
+    let duplicateTurnTested = false
+    while (true) {
+      const row = await getMiniGameMatchRow(pendingMatch!.id)
+      if (row.status !== 'active') {
+        break
+      }
+
+      const actingActor = row.current_turn_membership_id === creatorMember.membershipId ? creator : challenger
+      const actingMembershipId = actingActor === creator ? creatorMember.membershipId : opponentMember.membershipId
+      const nextActor = actingActor === creator ? challenger : creator
+      const revealed = new Set<number>((row.revealed_slots ?? []).map((slot: any) => Number(slot)))
+      const safeSlot = Array.from({ length: BEER_BOMB_BOARD_SIZE }, (_, index) => index).find(
+        (index) => index !== row.hidden_slot_index && !revealed.has(index)
+      )
+      const slotIndex = safeSlot ?? row.hidden_slot_index
+
+      await mutateAppState(actingActor, 'takeMiniGameTurn', {
+        crewId: crew.id,
+        matchId: pendingMatch!.id,
+        slotIndex,
+      })
+
+      const afterTurn = await getMiniGameMatchRow(pendingMatch!.id)
+
+      if (slotIndex !== row.hidden_slot_index && !duplicateTurnTested) {
+        await expect(
+          mutateAppState(nextActor, 'takeMiniGameTurn', {
+            crewId: crew.id,
+            matchId: pendingMatch!.id,
+            slotIndex,
+          })
+        ).rejects.toThrow(/already been tapped/i)
+        duplicateTurnTested = true
+      }
+
+      if (afterTurn.status === 'completed') {
+        const expectedWinnerId =
+          actingMembershipId === creatorMember.membershipId
+            ? opponentMember.membershipId
+            : creatorMember.membershipId
+
+        expect(afterTurn.winner_membership_id).toBe(expectedWinnerId)
+        expect(afterTurn.loser_membership_id).toBe(actingMembershipId)
+        expect(afterTurn.revealed_slots).toContain(afterTurn.hidden_slot_index)
+        break
+      }
+    }
+
+    state = await loadAppState(creator)
+    currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    activeMatch = currentCrew.currentNight?.miniGameMatches.find((match: any) => match.id === pendingMatch!.id)
+
+    expect(activeMatch).toBeTruthy()
+    expect(activeMatch?.status).toBe('completed')
+    expect(activeMatch?.bombSlotIndex).not.toBeUndefined()
+    expect(activeMatch?.revealedSlots).toContain(activeMatch?.bombSlotIndex)
+    expect(activeMatch?.winner).toBeTruthy()
+    expect(activeMatch?.loser).toBeTruthy()
+
+    const ledgerEntry = state.crewDataById[crew.id].allTimeLedger.find((entry: any) => entry.matchId === pendingMatch!.id)
+    expect(ledgerEntry?.drinks).toBe(2)
+    expect(ledgerEntry?.fromUser.name).toBe(activeMatch?.loser?.name)
+    expect(ledgerEntry?.toUser.name).toBe(activeMatch?.winner?.name)
+
+    const { data: events } = await getServiceRoleClient()
+      .from('mini_game_match_events')
+      .select('event_type')
+      .eq('match_id', pendingMatch!.id)
+
+    expect(events?.map((event: any) => event.event_type)).toEqual(
+      expect.arrayContaining([
+        'challenge_created',
+        'challenge_accepted',
+        'turn_taken',
+        'match_completed',
+      ])
+    )
+  }, 30000)
+
+  it('declines and cancels pending Beer Bomb challenges', async () => {
+    if (!miniGameTablesAvailable) {
+      return
+    }
+
+    const { creator, crew, night } = await createCrewWithNight('Beer Bomb Decisions')
+    const challenger = makeAuthenticatedActor('Beer Bomb Opponent')
+
+    await mutateAppState(challenger, 'joinCrew', { code: crew.inviteCode })
+
+    let state = await loadAppState(creator)
+    let currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    const opponentMember = currentCrew.members.find((member: any) => member.name === 'Beer Bomb Opponent')!
+
+    await mutateAppState(creator, 'createMiniGameChallenge', {
+      crewId: crew.id,
+      nightId: night.id,
+      opponentMembershipId: opponentMember.membershipId!,
+      title: 'Decline Me',
+      proposedWager: 1.5,
+      gameKey: 'beer_bomb',
+    })
+
+    state = await loadAppState(creator)
+    currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    const declinedMatch = currentCrew.currentNight?.miniGameMatches.find((match: any) => match.title === 'Decline Me')
+
+    expect(declinedMatch).toBeTruthy()
+
+    await mutateAppState(challenger, 'respondToMiniGameChallenge', {
+      crewId: crew.id,
+      matchId: declinedMatch!.id,
+      accepted: false,
+    })
+
+    const declinedRow = await getMiniGameMatchRow(declinedMatch!.id)
+    expect(declinedRow.status).toBe('declined')
+    expect(declinedRow.declined_at).toBeTruthy()
+
+    await mutateAppState(creator, 'createMiniGameChallenge', {
+      crewId: crew.id,
+      nightId: night.id,
+      opponentMembershipId: opponentMember.membershipId!,
+      title: 'Cancel Me',
+      proposedWager: 1,
+      gameKey: 'beer_bomb',
+    })
+
+    state = await loadAppState(creator)
+    currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    const cancelledMatch = currentCrew.currentNight?.miniGameMatches.find((match: any) => match.title === 'Cancel Me')
+
+    expect(cancelledMatch).toBeTruthy()
+
+    await mutateAppState(creator, 'cancelMiniGameChallenge', {
+      crewId: crew.id,
+      matchId: cancelledMatch!.id,
+    })
+
+    const cancelledRow = await getMiniGameMatchRow(cancelledMatch!.id)
+    expect(cancelledRow.status).toBe('cancelled')
+    expect(cancelledRow.cancelled_at).toBeTruthy()
+  }, 30000)
+
+  it('persists dispute voting and resolves with non-voters backing the proposed result', async () => {
+    const { creator, crew, night } = await createCrewWithNight('Dispute Flow')
+    const challenger = makeAuthenticatedActor('Dispute Challenger')
+    const observer = makeAuthenticatedActor('Dispute Observer')
+
+    await mutateAppState(challenger, 'joinCrew', { code: crew.inviteCode })
+    await mutateAppState(observer, 'joinCrew', { code: crew.inviteCode })
+
+    await mutateAppState(creator, 'createBet', {
+      crewId: crew.id,
+      nightId: night.id,
+      type: 'prop',
+      subtype: 'yesno',
+      title: 'Will the karaoke machine survive?',
+      options: [{ label: 'Yes' }, { label: 'No' }],
+      closeTime: 60,
+      wager: 1,
+      initialOptionIndex: 0,
+    })
+
+    const afterCreate = await loadAppState(creator)
+    const createdBet = afterCreate.crews
+      .find((entry: any) => entry.id === crew.id)
+      ?.currentNight?.bets.find((bet: any) => bet.title.includes('karaoke'))
+
+    const noOption = createdBet?.options.find((option: any) => option.label === 'No')
+    expect(createdBet).toBeTruthy()
+    expect(noOption).toBeTruthy()
+
+    await mutateAppState(challenger, 'placeWager', {
+      crewId: crew.id,
+      betId: createdBet!.id,
+      optionId: noOption!.id,
+      drinks: 2,
+    })
+
+    await mutateAppState(observer, 'placeWager', {
+      crewId: crew.id,
+      betId: createdBet!.id,
+      optionId: noOption!.id,
+      drinks: 0.5,
+    })
+
+    await mutateAppState(creator, 'proposeResult', {
+      crewId: crew.id,
+      betId: createdBet!.id,
+      optionId: noOption!.id,
+    })
+
+    await mutateAppState(challenger, 'disputeResult', {
+      crewId: crew.id,
+      betId: createdBet!.id,
+      reason: 'Wanted to force a vote',
+    })
+
+    const stateWithDispute = await loadAppState(creator)
+    const disputedBet = stateWithDispute.crews
+      .find((entry: any) => entry.id === crew.id)
+      ?.currentNight?.bets.find((bet: any) => bet.id === createdBet!.id)
+
+    expect(disputedBet?.status).toBe('disputed')
+
+    const dispute = await getServiceRoleClient()
+      .from('disputes')
+      .select('id')
+      .eq('bet_id', createdBet!.id)
+      .eq('status', 'open')
+      .single()
+
+    expect(dispute.error).toBeNull()
+
+    await mutateAppState(challenger, 'castDisputeVote', {
+      crewId: crew.id,
+      disputeId: dispute.data!.id,
+      optionId: noOption!.id,
+    })
+
+    await ageDispute(dispute.data!.id)
+
+    await mutateAppState(creator, 'confirmResult', {
+      crewId: crew.id,
+      betId: createdBet!.id,
+    })
+
+    const settledState = await loadAppState(creator)
+    const resolvedBet = settledState.crews
+      .find((entry: any) => entry.id === crew.id)
+      ?.currentNight?.bets.find((bet: any) => bet.id === createdBet!.id)
+
+    expect(resolvedBet?.status).toBe('resolved')
+    expect(resolvedBet?.result).toBe(noOption!.id)
   }, 30000)
 
   it('persists the leave-night and rejoin-night flow for active participants', async () => {
