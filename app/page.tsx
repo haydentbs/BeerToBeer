@@ -46,10 +46,14 @@ import type { DrinkTheme } from '@/lib/themes'
 import { CurrentUserProvider } from '@/lib/current-user'
 import {
   cancelMiniGameChallenge,
+  castDisputeVote,
+  confirmResult,
   createMiniGameChallenge,
+  disputeResult,
   fetchBootstrapState,
   joinGuest,
   mutateApp,
+  proposeResult,
   respondToBetOffer,
   respondToMiniGameChallenge,
   takeMiniGameTurn,
@@ -1434,8 +1438,40 @@ export default function BeerScoreApp() {
     applyAppPayload(payload)
   }
 
+  const handleProposeResult = (betId: string, optionId: string) => {
+    if (!activeCrewId) return
+    void runMutation(async () => {
+      const payload = await proposeResult({ crewId: activeCrewId, betId, optionId })
+      applyAppPayload(payload)
+    })
+  }
+
+  const handleConfirmResult = (betId: string) => {
+    if (!activeCrewId) return
+    void runMutation(async () => {
+      const payload = await confirmResult({ crewId: activeCrewId, betId })
+      applyAppPayload(payload)
+    })
+  }
+
+  const handleDisputeResult = (betId: string) => {
+    if (!activeCrewId) return
+    void runMutation(async () => {
+      const payload = await disputeResult({ crewId: activeCrewId, betId })
+      applyAppPayload(payload)
+    })
+  }
+
+  const handleCastDisputeVote = (betId: string, optionId: string) => {
+    if (!activeCrewId) return
+    void runMutation(async () => {
+      const payload = await castDisputeVote({ crewId: activeCrewId, betId, optionId })
+      applyAppPayload(payload)
+    })
+  }
+
   const handleSettle = (_entry: unknown) => {
-    // Mock UI only for now.
+    // Settlement confirmation UI is planned — for now this is a placeholder.
   }
 
   const handleStartNight = (nightName?: string, nightThemeOverride?: DrinkTheme) => {
@@ -1612,6 +1648,10 @@ export default function BeerScoreApp() {
             onBeerBombDecline={handleBeerBombDecline}
             onBeerBombCancel={handleBeerBombCancel}
             onBeerBombTurn={handleBeerBombTurn}
+            onProposeResult={handleProposeResult}
+            onConfirmResult={handleConfirmResult}
+            onDisputeResult={handleDisputeResult}
+            onCastDisputeVote={handleCastDisputeVote}
             showPendingInviteBanners={false}
           />
         )}

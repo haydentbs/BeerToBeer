@@ -83,7 +83,7 @@ describe('TonightScreen', () => {
 
     renderTonightScreen()
 
-    await user.click(screen.getByRole('button', { name: /solo test/i }))
+    await user.click(screen.getByRole('button', { name: /solo bomb/i }))
 
     expect(screen.getByText('Beer Bomb Solo Test')).toBeInTheDocument()
     expect(screen.getByText('Solo test mode keeps the turn on you so you can tap through the board without a second player.')).toBeInTheDocument()

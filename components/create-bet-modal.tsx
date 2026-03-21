@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Bomb, HelpCircle, Minus, Plus, Swords, X } from 'lucide-react'
+import { Bomb, HelpCircle, Lock, Minus, Plus, Swords, Trophy, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { BetSubtype, User } from '@/lib/store'
 import { useCurrentUser } from '@/lib/current-user'
@@ -146,6 +146,23 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
             <p className="text-sm text-muted-foreground">What kind of challenge are we starting?</p>
 
             <div className="space-y-3">
+              {/* Tournament — coming soon */}
+              <div className="w-full rounded-xl border-3 border-border/40 p-4 opacity-40 cursor-not-allowed">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                    <Trophy className="h-6 w-6 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-foreground">Tournament</h3>
+                    <p className="text-sm text-muted-foreground">Brackets & elimination</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 rounded-full border border-border/60 px-2.5 py-1">
+                    <Lock className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-[11px] font-semibold text-muted-foreground">Soon</span>
+                  </div>
+                </div>
+              </div>
+
               <button
                 onClick={() => {
                   setMode('prop')
@@ -153,7 +170,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
                 }}
                 className={cn(
                   'w-full rounded-xl border-3 p-4 text-left transition-all',
-                  mode === 'prop' ? 'border-primary bg-primary/10' : 'border-border bg-surface hover:border-primary/50'
+                  mode === 'prop' ? 'border-primary bg-primary/10' : 'border-border/60 bg-card hover:border-primary/50 hover:bg-surface/30'
                 )}
               >
                 <div className="flex items-center gap-3">
@@ -161,8 +178,8 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
                     <HelpCircle className="h-6 w-6 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-foreground">Prop Bet</h3>
-                    <p className="text-sm text-muted-foreground">Anyone can wager</p>
+                    <h3 className="font-bold text-foreground">Group Bet</h3>
+                    <p className="text-sm text-muted-foreground">Ask a question everyone bets on</p>
                   </div>
                 </div>
               </button>
@@ -174,7 +191,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
                 }}
                 className={cn(
                   'w-full rounded-xl border-3 p-4 text-left transition-all',
-                  mode === 'h2h' ? 'border-primary bg-primary/10' : 'border-border bg-surface hover:border-primary/50'
+                  mode === 'h2h' ? 'border-primary bg-primary/10' : 'border-border/60 bg-card hover:border-primary/50 hover:bg-surface/30'
                 )}
               >
                 <div className="flex items-center gap-3">
@@ -195,7 +212,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
                 }}
                 className={cn(
                   'w-full rounded-xl border-3 p-4 text-left transition-all',
-                  mode === 'mini-game' ? 'border-primary bg-primary/10' : 'border-border bg-surface hover:border-primary/50'
+                  mode === 'mini-game' ? 'border-primary bg-primary/10' : 'border-border/60 bg-card hover:border-primary/50 hover:bg-surface/30'
                 )}
               >
                 <div className="flex items-center gap-3">
@@ -230,7 +247,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
                         'flex-1 rounded-lg border-2 px-3 py-2 text-sm font-semibold transition-all',
                         propFormat === format.id
                           ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border bg-surface text-foreground hover:border-primary/50'
+                          : 'border-border/60 bg-card text-foreground hover:border-primary/50'
                       )}
                     >
                       {format.label}
@@ -429,32 +446,34 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
               <p className="mt-1.5 text-center text-xs text-muted-foreground">drinks</p>
             </div>
 
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {mode === 'mini-game' ? 'Responds within' : 'Closes in'}
-              </label>
-              <div className="mt-2 flex items-center gap-2">
-                {[1, 2, 5, 15, 60].map((mins) => (
-                  <button
-                    key={mins}
-                    onClick={() => setCloseTime(mins)}
-                    className={cn(
-                      'flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-all',
-                      closeTime === mins
-                        ? 'border-primary bg-primary text-primary-foreground'
-                        : 'border-border bg-surface text-foreground hover:border-primary/50'
-                    )}
-                  >
-                    {mins}m
-                  </button>
-                ))}
+            {mode !== 'h2h' && (
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {mode === 'mini-game' ? 'Responds within' : 'Wagering closes in'}
+                </label>
+                <div className="mt-2 flex items-center gap-2">
+                  {[1, 2, 5, 15, 60].map((mins) => (
+                    <button
+                      key={mins}
+                      onClick={() => setCloseTime(mins)}
+                      className={cn(
+                        'flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-all',
+                        closeTime === mins
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border/60 bg-card text-foreground hover:border-primary/50'
+                      )}
+                    >
+                      {mins}m
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="flex gap-3 pt-2">
               <button
                 onClick={() => setStep(1)}
-                className="flex-1 rounded-xl border-2 border-border py-3 font-semibold text-foreground transition-colors hover:bg-surface"
+                className="flex-1 rounded-xl border-2 border-border py-3 font-semibold text-foreground transition-colors hover:bg-surface/50"
               >
                 Back
               </button>

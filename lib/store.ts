@@ -903,6 +903,12 @@ export function getTimeRemainingOrLabel(date?: Date | null, fallback = 'Waiting'
   return getTimeRemaining(date)
 }
 
+/** Raw seconds until a date, or null if no date provided. Negative means expired. */
+export function getSecondsRemaining(date?: Date | null): number | null {
+  if (!date) return null
+  return Math.ceil((date.getTime() - Date.now()) / 1000)
+}
+
 export interface NotificationPayload {
   betId?: string
   matchId?: string

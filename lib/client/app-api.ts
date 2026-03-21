@@ -152,3 +152,19 @@ export async function cancelMiniGameChallenge(payload: Record<string, any>) {
 export async function respondToBetOffer(payload: Record<string, any>) {
   return mutateApp('respondToBetOffer', payload)
 }
+
+export async function proposeResult(payload: Record<string, any>) {
+  return mutateApp('proposeResult', payload)
+}
+
+export async function confirmResult(payload: Record<string, any>) {
+  return mutateApp('confirmResult', payload)
+}
+
+export async function disputeResult(payload: Record<string, any>) {
+  return mutateApp('disputeResult', payload)
+}
+
+export async function castDisputeVote(payload: Record<string, any>) {
+  return mutateApp('castDisputeVote', payload)
+}
