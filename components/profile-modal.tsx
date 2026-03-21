@@ -4,6 +4,7 @@ import { X, Trophy, Target, Flame, TrendingUp, Beer, Users, LogIn, Sun, Moon, Mo
 import { cn } from '@/lib/utils'
 import { useTheme } from './theme-provider'
 import type { AppMode } from '@/lib/themes'
+import type { ClaimableGuest } from '@/lib/server/domain'
 
 interface ProfileCrew {
   name: string
@@ -29,8 +30,11 @@ interface ProfileModalProps {
   isGuest?: boolean
   crews: ProfileCrew[]
   stats: ProfileStats
+  claimableGuests?: ClaimableGuest[]
+  claimingGuestMembershipId?: string | null
   onSignOut?: () => void
   onFinishAccount?: () => void
+  onClaimGuest?: (guestMembershipId: string) => void
   isSigningOut?: boolean
 }
 
@@ -43,8 +47,11 @@ export function ProfileModal({
   isGuest,
   crews,
   stats,
+  claimableGuests = [],
+  claimingGuestMembershipId = null,
   onSignOut,
   onFinishAccount,
+  onClaimGuest,
   isSigningOut = false,
 }: ProfileModalProps) {
   const { mode, setMode, drinkEmoji, themesDisabled, setThemesDisabled } = useTheme()
@@ -90,6 +97,7 @@ export function ProfileModal({
             </div>
             <button
               onClick={onClose}
+              aria-label="Close profile"
               className="p-1.5 rounded-lg hover:bg-surface transition-colors"
             >
               <X className="h-5 w-5 text-card-foreground" />
@@ -110,10 +118,44 @@ export function ProfileModal({
             >
               <LogIn className="h-5 w-5 text-primary shrink-0" />
               <div>
-                <p className="font-bold text-card-foreground text-sm">Finish your account</p>
-                <p className="text-xs text-muted-foreground">Sign in with Google to save your data</p>
+                <p className="font-bold text-card-foreground text-sm">Create your account</p>
+                <p className="text-xs text-muted-foreground">Sign in with Google to claim this guest history</p>
               </div>
             </button>
+          )}
+
+          {!isGuest && claimableGuests.length > 0 && onClaimGuest && (
+            <div>
+              <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Claim guest stats</h3>
+              <div className="space-y-2">
+                {claimableGuests.map((guest) => {
+                  const isClaiming = claimingGuestMembershipId === guest.guestMembershipId
+
+                  return (
+                    <div
+                      key={guest.guestMembershipId}
+                      className="p-3 rounded-xl bg-surface border-2 border-border flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold text-card-foreground text-sm truncate">
+                          {guest.guestName}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {guest.crewName} · {guest.status === 'active' ? 'Active guest' : 'Past guest'}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => onClaimGuest(guest.guestMembershipId)}
+                        disabled={isClaiming}
+                        className="px-3 py-2 rounded-lg border-2 border-primary text-primary text-sm font-semibold hover:bg-primary/10 transition-colors disabled:opacity-50"
+                      >
+                        {isClaiming ? 'Claiming…' : 'Claim'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           )}
 
           {/* Overall Net */}

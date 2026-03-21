@@ -34,9 +34,31 @@ import { useTheme } from '@/components/theme-provider'
 import type { DrinkTheme } from '@/lib/themes'
 import { CurrentUserProvider } from '@/lib/current-user'
 import { fetchBootstrapState, joinGuest, mutateApp } from '@/lib/client/app-api'
-import type { AppMutationPayload } from '@/lib/server/domain'
+import type { AppMutationPayload, ClaimableGuest } from '@/lib/server/domain'
 
 type AppView = 'home' | 'crew'
+const PENDING_GUEST_CLAIM_KEY = 'beerscore_pending_guest_claim'
+
+function getPendingGuestClaimFlag() {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  return window.localStorage.getItem(PENDING_GUEST_CLAIM_KEY) === '1'
+}
+
+function setPendingGuestClaimFlag(value: boolean) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  if (value) {
+    window.localStorage.setItem(PENDING_GUEST_CLAIM_KEY, '1')
+    return
+  }
+
+  window.localStorage.removeItem(PENDING_GUEST_CLAIM_KEY)
+}
 
 interface AuthActionResult {
   error?: string
@@ -62,14 +84,23 @@ export default function BeerScoreApp() {
   const [crews, setCrews] = useState<Crew[]>([])
   const [crewDataById, setCrewDataById] = useState<Record<string, { tonightLedger: any[]; allTimeLedger: any[]; leaderboard: any[] }>>({})
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [claimableGuests, setClaimableGuests] = useState<ClaimableGuest[]>([])
   const [isAuthReady, setIsAuthReady] = useState(false)
   const [isDataReady, setIsDataReady] = useState(false)
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const [claimingGuestMembershipId, setClaimingGuestMembershipId] = useState<string | null>(null)
   const [authNotice, setAuthNotice] = useState<string | null>(null)
   const supabaseConfigured = isSupabaseConfigured()
   const supabaseConfigError = getSupabaseConfigError()
   const { setActiveDrinkTheme } = useTheme()
+  const sessionLoadKey = session
+    ? [
+        session.isGuest ? 'guest' : 'auth',
+        session.authUserId ?? session.guestIdentityId ?? session.user.id,
+        session.membershipId ?? '',
+      ].join(':')
+    : null
 
   const applyAuthenticatedUser = useCallback((authUser: SupabaseUser | null) => {
     if (!authUser) {
@@ -77,6 +108,7 @@ export default function BeerScoreApp() {
       setCrews([])
       setCrewDataById({})
       setNotifications([])
+      setClaimableGuests([])
       setView('home')
       setActiveCrewId(null)
       return
@@ -90,6 +122,36 @@ export default function BeerScoreApp() {
     setCrews(payload.crews)
     setCrewDataById(payload.crewDataById)
     setNotifications(payload.notifications)
+    setClaimableGuests(payload.claimableGuests ?? [])
+    if (payload.viewerUser) {
+      setSession((current) => {
+        if (!current) {
+          return current
+        }
+
+        const nextUser = {
+          ...current.user,
+          ...payload.viewerUser,
+        }
+
+        const userUnchanged =
+          current.user.id === nextUser.id &&
+          current.user.membershipId === nextUser.membershipId &&
+          current.user.role === nextUser.role &&
+          current.user.name === nextUser.name &&
+          current.user.avatar === nextUser.avatar &&
+          current.user.initials === nextUser.initials
+
+        if (userUnchanged) {
+          return current
+        }
+
+        return {
+          ...current,
+          user: nextUser,
+        }
+      })
+    }
   }, [])
 
   useEffect(() => {
@@ -187,7 +249,9 @@ export default function BeerScoreApp() {
         return
       }
 
-      clearGuestSessionCookie()
+      if (!getPendingGuestClaimFlag()) {
+        clearGuestSessionCookie()
+      }
       applyAuthenticatedUser(user)
       setAuthNotice(null)
       clearAuthFallback()
@@ -204,7 +268,9 @@ export default function BeerScoreApp() {
       }
 
       if (nextSession?.user) {
-        clearGuestSessionCookie()
+        if (!getPendingGuestClaimFlag()) {
+          clearGuestSessionCookie()
+        }
         applyAuthenticatedUser(nextSession.user)
       } else if (!restoreGuestSession()) {
         applyAuthenticatedUser(null)
@@ -252,7 +318,90 @@ export default function BeerScoreApp() {
     return () => {
       cancelled = true
     }
+  }, [applyAppPayload, sessionLoadKey])
+
+  useEffect(() => {
+    if (!session || session.isGuest || !getPendingGuestClaimFlag()) {
+      return
+    }
+
+    const guestSession = readGuestSessionCookie()
+    if (!guestSession?.membershipId) {
+      setPendingGuestClaimFlag(false)
+      return
+    }
+
+    let cancelled = false
+
+    const claimGuestHistory = async () => {
+      setClaimingGuestMembershipId(guestSession.membershipId ?? null)
+
+      try {
+        const payload = await mutateApp('claimGuestMembership', {
+          guestMembershipId: guestSession.membershipId,
+          guestIdentityId: guestSession.guestIdentityId,
+          source: 'guest-upgrade',
+        })
+
+        if (cancelled) {
+          return
+        }
+
+        applyAppPayload(payload)
+        const claimedCrew = payload.crews[0]
+        if (claimedCrew) {
+          setActiveCrewId((current) => current ?? claimedCrew.id)
+        }
+        setAuthNotice(`Claimed your guest stats from ${guestSession.user.name}.`)
+        clearGuestSessionCookie()
+      } catch (error) {
+        if (!cancelled) {
+          setAuthNotice(error instanceof Error ? error.message : 'We could not claim your guest stats automatically.')
+        }
+      } finally {
+        if (!cancelled) {
+          setPendingGuestClaimFlag(false)
+          setClaimingGuestMembershipId(null)
+        }
+      }
+    }
+
+    void claimGuestHistory()
+
+    return () => {
+      cancelled = true
+    }
   }, [applyAppPayload, session])
+
+  useEffect(() => {
+    if (isAuthReady) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setAuthNotice((current) => current ?? 'Supabase session check timed out. You can still continue with Google or join as a guest.')
+      setIsAuthReady(true)
+    }, 5000)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [isAuthReady])
+
+  useEffect(() => {
+    if (!session || isDataReady) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setAuthNotice((current) => current ?? 'BeerScore is taking longer than usual to load your crews. Showing what we have so far.')
+      setIsDataReady(true)
+    }, 5000)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [isDataReady, session])
 
   const crewNetPositions = useMemo(() => {
     const positions: Record<string, number> = {}
@@ -270,14 +419,19 @@ export default function BeerScoreApp() {
   const activeCrew = crews.find((crew) => crew.id === activeCrewId)
   const activeCrewData = activeCrewId ? crewDataById[activeCrewId] : null
 
-  const handleGoogleAuth = async (): Promise<AuthActionResult> => {
+  const handleGoogleAuth = async ({ preserveGuestSession = false }: { preserveGuestSession?: boolean } = {}): Promise<AuthActionResult> => {
     if (!supabaseConfigured) {
       return { error: supabaseConfigError ?? 'Supabase is not configured.' }
     }
 
     setIsAuthSubmitting(true)
     setAuthNotice(null)
-    clearGuestSessionCookie()
+    if (preserveGuestSession) {
+      setPendingGuestClaimFlag(true)
+    } else {
+      setPendingGuestClaimFlag(false)
+      clearGuestSessionCookie()
+    }
 
     try {
       const supabase = getSupabaseBrowserClient()
@@ -307,7 +461,8 @@ export default function BeerScoreApp() {
 
       setSession(payload.session)
       applyAppPayload(payload)
-      const joinedCrew = payload.crews.find((crew) => crew.inviteCode === crewCode.trim().toUpperCase()) ?? payload.crews[0]
+      const normalizedCrewCode = crewCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+      const joinedCrew = payload.crews.find((crew) => crew.inviteCode === normalizedCrewCode) ?? payload.crews[0]
       if (joinedCrew) {
         setActiveCrewId(joinedCrew.id)
         setActiveTab('tonight')
@@ -323,6 +478,7 @@ export default function BeerScoreApp() {
   }
 
   const handleSignOut = async () => {
+    setPendingGuestClaimFlag(false)
     clearGuestSessionCookie()
 
     if (!supabaseConfigured) {
@@ -350,6 +506,27 @@ export default function BeerScoreApp() {
     applyAppPayload(payload)
   }
 
+  const handleFinishAccount = async () => {
+    await handleGoogleAuth({ preserveGuestSession: true })
+  }
+
+  const handleClaimGuest = async (guestMembershipId: string) => {
+    setClaimingGuestMembershipId(guestMembershipId)
+
+    try {
+      const payload = await mutateApp('claimGuestMembership', {
+        guestMembershipId,
+        source: 'manual-claim',
+      })
+      applyAppPayload(payload)
+      setAuthNotice('Guest stats claimed.')
+    } catch (error) {
+      setAuthNotice(error instanceof Error ? error.message : 'We could not claim that guest right now.')
+    } finally {
+      setClaimingGuestMembershipId(null)
+    }
+  }
+
   const handleSelectCrew = (crewId: string) => {
     setActiveCrewId(crewId)
     setActiveTab('tonight')
@@ -373,7 +550,8 @@ export default function BeerScoreApp() {
   const handleJoinCrew = (code: string) => {
     void mutateApp('joinCrew', { code }).then((payload) => {
       applyAppPayload(payload)
-      const joinedCrew = payload.crews.find((crew) => crew.inviteCode === code)
+      const normalizedCode = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+      const joinedCrew = payload.crews.find((crew) => crew.inviteCode === normalizedCode)
       if (joinedCrew) {
         handleSelectCrew(joinedCrew.id)
       }
@@ -509,7 +687,7 @@ export default function BeerScoreApp() {
         isSupabaseConfigured={supabaseConfigured}
         configError={supabaseConfigError}
         onGuestJoin={handleGuestJoin}
-        onGoogleAuth={handleGoogleAuth}
+        onGoogleAuth={() => handleGoogleAuth()}
       />
     )
   }
@@ -593,6 +771,7 @@ export default function BeerScoreApp() {
           <CrewScreen
                 crew={activeCrew}
                 currentUserId={session.user.id}
+                currentMembershipId={session.user.membershipId ?? null}
                 onStartNight={handleStartNight}
                 onLeaveNight={handleLeaveNight}
                 onRejoinNight={handleRejoinNight}
@@ -644,7 +823,11 @@ export default function BeerScoreApp() {
           bestNight: 5.4,
           currentStreak: 2,
         }}
+        claimableGuests={claimableGuests}
+        claimingGuestMembershipId={claimingGuestMembershipId}
         onSignOut={handleSignOut}
+        onFinishAccount={session.isGuest ? handleFinishAccount : undefined}
+        onClaimGuest={!session.isGuest ? handleClaimGuest : undefined}
         isSigningOut={isSigningOut}
       />
     </main>

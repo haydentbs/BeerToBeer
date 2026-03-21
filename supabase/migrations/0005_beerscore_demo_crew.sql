@@ -1,15 +1,15 @@
 insert into public.profiles (id, display_name, email, initials)
 values
-  ('00000000-0000-0000-0000-000000000001', 'Demo Creator', 'creator@example.com', 'DC'),
-  ('00000000-0000-0000-0000-000000000002', 'Sarah Lane', 'sarah@example.com', 'SL'),
-  ('00000000-0000-0000-0000-000000000003', 'Jake Moore', 'jake@example.com', 'JM')
+  ('00000000-0000-0000-0000-000000000001', 'Demo Creator', 'creator@example.com', 'DC')
+  ,('00000000-0000-0000-0000-000000000002', 'Sarah Lane', 'sarah@example.com', 'SL')
+  ,('00000000-0000-0000-0000-000000000003', 'Jake Moore', 'jake@example.com', 'JM')
 on conflict do nothing;
 
 insert into public.profile_preferences (profile_id, default_drink_theme)
 values
-  ('00000000-0000-0000-0000-000000000001', 'beer'),
-  ('00000000-0000-0000-0000-000000000002', 'beer'),
-  ('00000000-0000-0000-0000-000000000003', 'beer')
+  ('00000000-0000-0000-0000-000000000001', 'beer')
+  ,('00000000-0000-0000-0000-000000000002', 'beer')
+  ,('00000000-0000-0000-0000-000000000003', 'beer')
 on conflict do nothing;
 
 insert into public.crews (id, name, description, invite_code, visibility, drink_theme, created_by_profile_id)
@@ -37,6 +37,11 @@ values
   ('21000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'DEMO1234', 'Primary demo invite', '20000000-0000-0000-0000-000000000001')
 on conflict do nothing;
 
+insert into public.crew_settings (crew_id, allow_guests, allow_member_invites, default_drink_theme)
+values
+  ('10000000-0000-0000-0000-000000000001', true, true, 'beer')
+on conflict do nothing;
+
 insert into public.nights (id, crew_id, name, status, created_by_membership_id, drink_theme_override)
 values
   ('30000000-0000-0000-0000-000000000001', '10000000-0000-0000-0000-000000000001', 'Friday at O''Malley''s', 'active', '20000000-0000-0000-0000-000000000001', 'beer')
@@ -59,7 +64,7 @@ values
     'Will Dave mention his ex?',
     'Demo open bet for testing the pool UI.',
     'open',
-    '20000000-0000-0000-0000-000000000002',
+    '20000000-0000-0000-0000-000000000001',
     now() + interval '45 minutes'
   )
 on conflict do nothing;

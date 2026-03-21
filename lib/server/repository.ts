@@ -14,7 +14,7 @@ import {
   type User,
 } from '@/lib/store'
 import { getServiceRoleClient } from '@/lib/server/supabase'
-import type { AppBootstrapPayload, AppMutationPayload, CrewDataBundle } from '@/lib/server/domain'
+import type { AppBootstrapPayload, AppMutationPayload, ClaimableGuest, CrewDataBundle } from '@/lib/server/domain'
 import type { RequestActor } from '@/lib/server/session'
 
 type DrinkTheme = Crew['drinkTheme']
@@ -35,7 +35,7 @@ function getInitials(value: string) {
 }
 
 function normalizeInviteCode(value: string) {
-  return value.trim().toUpperCase()
+  return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
 
 function isValidHalfDrinkAmount(value: number) {
@@ -64,6 +64,339 @@ function buildUserFromMembership(membership: any): User {
     name,
     avatar: profile?.avatar_url ?? '',
     initials: profile?.initials ?? guest?.initials ?? getInitials(name),
+  }
+}
+
+function buildViewerUser(profile: any, memberships: any[]): User {
+  const primaryMembership = memberships
+    .slice()
+    .sort(compareMemberships)
+    .find((membership: any) => membership.profile_id === profile.id)
+
+  return {
+    id: profile.id,
+    membershipId: primaryMembership?.id,
+    role: primaryMembership?.role ?? 'member',
+    name: profile.display_name ?? profile.email ?? 'Player',
+    avatar: profile.avatar_url ?? '',
+    initials: profile.initials ?? getInitials(profile.display_name ?? profile.email ?? 'Player'),
+  }
+}
+
+async function mergeGuestWagers(fromMembershipId: string, toMembershipId: string) {
+  const supabase = getServiceRoleClient()
+  const { data: guestWagers, error: guestWagersError } = await supabase
+    .from('wagers')
+    .select('*')
+    .eq('membership_id', fromMembershipId)
+
+  if (guestWagersError) throw guestWagersError
+
+  for (const guestWager of guestWagers ?? []) {
+    const { data: targetWager, error: targetWagerError } = await supabase
+      .from('wagers')
+      .select('*')
+      .eq('membership_id', toMembershipId)
+      .eq('bet_id', guestWager.bet_id)
+      .maybeSingle()
+
+    if (targetWagerError) throw targetWagerError
+
+    if (!targetWager) {
+      const { error: updateError } = await supabase
+        .from('wagers')
+        .update({ membership_id: toMembershipId })
+        .eq('id', guestWager.id)
+
+      if (updateError) throw updateError
+      continue
+    }
+
+    if (targetWager.bet_option_id !== guestWager.bet_option_id) {
+      throw new Error('This guest cannot be claimed yet because both identities placed conflicting wagers on the same bet.')
+    }
+
+    const { error: mergeError } = await supabase
+      .from('wagers')
+      .update({
+        drinks: Number(targetWager.drinks) + Number(guestWager.drinks),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', targetWager.id)
+
+    if (mergeError) throw mergeError
+
+    const { error: deleteError } = await supabase
+      .from('wagers')
+      .delete()
+      .eq('id', guestWager.id)
+
+    if (deleteError) throw deleteError
+  }
+}
+
+async function mergeNightParticipants(fromMembershipId: string, toMembershipId: string) {
+  const supabase = getServiceRoleClient()
+  const { data: guestParticipants, error: guestParticipantsError } = await supabase
+    .from('night_participants')
+    .select('*')
+    .eq('membership_id', fromMembershipId)
+
+  if (guestParticipantsError) throw guestParticipantsError
+
+  for (const guestParticipant of guestParticipants ?? []) {
+    const { data: targetParticipant, error: targetParticipantError } = await supabase
+      .from('night_participants')
+      .select('*')
+      .eq('membership_id', toMembershipId)
+      .eq('night_id', guestParticipant.night_id)
+      .order('joined_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (targetParticipantError) throw targetParticipantError
+
+    if (!targetParticipant) {
+      const { error: updateError } = await supabase
+        .from('night_participants')
+        .update({ membership_id: toMembershipId })
+        .eq('id', guestParticipant.id)
+
+      if (updateError) throw updateError
+      continue
+    }
+
+    const mergedJoinedAt = new Date(
+      Math.min(new Date(targetParticipant.joined_at).getTime(), new Date(guestParticipant.joined_at).getTime())
+    ).toISOString()
+    const mergedLeftAt =
+      targetParticipant.left_at == null || guestParticipant.left_at == null
+        ? null
+        : new Date(
+            Math.max(new Date(targetParticipant.left_at).getTime(), new Date(guestParticipant.left_at).getTime())
+          ).toISOString()
+
+    const { error: preserveError } = await supabase
+      .from('night_participants')
+      .update({
+        joined_at: mergedJoinedAt,
+        left_at: mergedLeftAt,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', targetParticipant.id)
+
+    if (preserveError) throw preserveError
+
+    const { error: deleteError } = await supabase
+      .from('night_participants')
+      .delete()
+      .eq('id', guestParticipant.id)
+
+    if (deleteError) throw deleteError
+  }
+}
+
+async function mergeDuplicateMembershipRows(table: string, uniqueColumn: string, fromMembershipId: string, toMembershipId: string) {
+  const supabase = getServiceRoleClient()
+  const { data: rows, error: rowsError } = await supabase
+    .from(table)
+    .select('*')
+    .eq('membership_id', fromMembershipId)
+
+  if (rowsError) throw rowsError
+
+  for (const row of rows ?? []) {
+    const { data: targetRow, error: targetRowError } = await supabase
+      .from(table)
+      .select('*')
+      .eq('membership_id', toMembershipId)
+      .eq(uniqueColumn, row[uniqueColumn])
+      .maybeSingle()
+
+    if (targetRowError) throw targetRowError
+
+    if (targetRow) {
+      const { error: deleteError } = await supabase
+        .from(table)
+        .delete()
+        .eq('id', row.id)
+
+      if (deleteError) throw deleteError
+      continue
+    }
+
+    const { error: updateError } = await supabase
+      .from(table)
+      .update({ membership_id: toMembershipId })
+      .eq('id', row.id)
+
+    if (updateError) throw updateError
+  }
+}
+
+async function mergeGuestNotificationPreference(fromMembershipId: string, toMembershipId: string) {
+  const supabase = getServiceRoleClient()
+  const { data: guestPreference, error: guestPreferenceError } = await supabase
+    .from('notification_preferences')
+    .select('*')
+    .eq('membership_id', fromMembershipId)
+    .maybeSingle()
+
+  if (guestPreferenceError) throw guestPreferenceError
+  if (!guestPreference) return
+
+  const { data: targetPreference, error: targetPreferenceError } = await supabase
+    .from('notification_preferences')
+    .select('*')
+    .eq('membership_id', toMembershipId)
+    .maybeSingle()
+
+  if (targetPreferenceError) throw targetPreferenceError
+
+  if (targetPreference) {
+    const { error: deleteError } = await supabase
+      .from('notification_preferences')
+      .delete()
+      .eq('id', guestPreference.id)
+
+    if (deleteError) throw deleteError
+    return
+  }
+
+  const { error: updateError } = await supabase
+    .from('notification_preferences')
+    .update({ membership_id: toMembershipId })
+    .eq('id', guestPreference.id)
+
+  if (updateError) throw updateError
+}
+
+async function updateMembershipReference(table: string, column: string, fromMembershipId: string, toMembershipId: string) {
+  const supabase = getServiceRoleClient()
+  const { error } = await supabase
+    .from(table)
+    .update({ [column]: toMembershipId })
+    .eq(column, fromMembershipId)
+
+  if (error) throw error
+}
+
+async function mergeGuestMembershipIntoProfile(profile: any, guestMembershipId: string) {
+  const supabase = getServiceRoleClient()
+  const { data: guestMembership, error: guestMembershipError } = await supabase
+    .from('crew_memberships')
+    .select('*, guest_identities(*)')
+    .eq('id', guestMembershipId)
+    .single()
+
+  if (guestMembershipError) throw guestMembershipError
+  if (guestMembership.actor_type !== 'guest' || !guestMembership.guest_identity_id) {
+    throw new Error('Only guest memberships can be claimed.')
+  }
+
+  if (
+    guestMembership.guest_identities?.upgraded_to_profile_id &&
+    guestMembership.guest_identities.upgraded_to_profile_id !== profile.id
+  ) {
+    throw new Error('This guest has already been claimed by another account.')
+  }
+
+  const { data: existingMembership, error: existingMembershipError } = await supabase
+    .from('crew_memberships')
+    .select('*')
+    .eq('crew_id', guestMembership.crew_id)
+    .eq('profile_id', profile.id)
+    .maybeSingle()
+
+  if (existingMembershipError) throw existingMembershipError
+
+  let targetMembershipId = guestMembership.id
+
+  if (existingMembership && existingMembership.id !== guestMembership.id) {
+    await mergeGuestWagers(guestMembership.id, existingMembership.id)
+    await mergeNightParticipants(guestMembership.id, existingMembership.id)
+    await mergeDuplicateMembershipRows('dispute_votes', 'dispute_id', guestMembership.id, existingMembership.id)
+    await mergeDuplicateMembershipRows('settlement_confirmations', 'settlement_request_id', guestMembership.id, existingMembership.id)
+    await mergeGuestNotificationPreference(guestMembership.id, existingMembership.id)
+
+    const referenceUpdates: Array<[string, string]> = [
+      ['crew_invites', 'created_by_membership_id'],
+      ['crew_invite_redemptions', 'membership_id'],
+      ['nights', 'created_by_membership_id'],
+      ['bets', 'created_by_membership_id'],
+      ['bets', 'challenger_membership_id'],
+      ['bet_comments', 'membership_id'],
+      ['disputes', 'opened_by_membership_id'],
+      ['bet_status_events', 'actor_membership_id'],
+      ['bet_member_outcomes', 'membership_id'],
+      ['ledger_events', 'from_membership_id'],
+      ['ledger_events', 'to_membership_id'],
+      ['settlement_requests', 'initiated_by_membership_id'],
+      ['settlement_requests', 'counterparty_membership_id'],
+      ['notifications', 'membership_id'],
+      ['audit_log', 'actor_membership_id'],
+    ]
+
+    for (const [table, column] of referenceUpdates) {
+      await updateMembershipReference(table, column, guestMembership.id, existingMembership.id)
+    }
+
+    const nextStatus =
+      existingMembership.status === 'active' || guestMembership.status === 'active'
+        ? 'active'
+        : existingMembership.status ?? guestMembership.status
+
+    const { error: promoteExistingError } = await supabase
+      .from('crew_memberships')
+      .update({
+        status: nextStatus,
+        left_at: nextStatus === 'active' ? null : existingMembership.left_at ?? guestMembership.left_at ?? null,
+        role: existingMembership.role === 'creator' || existingMembership.role === 'admin' ? existingMembership.role : 'member',
+      })
+      .eq('id', existingMembership.id)
+
+    if (promoteExistingError) throw promoteExistingError
+
+    const { error: archiveGuestError } = await supabase
+      .from('crew_memberships')
+      .update({
+        status: 'removed',
+        left_at: guestMembership.left_at ?? new Date().toISOString(),
+      })
+      .eq('id', guestMembership.id)
+
+    if (archiveGuestError) throw archiveGuestError
+
+    targetMembershipId = existingMembership.id
+  } else {
+    const { error: upgradeError } = await supabase
+      .from('crew_memberships')
+      .update({
+        actor_type: 'profile',
+        profile_id: profile.id,
+        guest_identity_id: null,
+        role: guestMembership.role === 'guest' ? 'member' : guestMembership.role,
+      })
+      .eq('id', guestMembership.id)
+
+    if (upgradeError) throw upgradeError
+    await ensureNotificationPreference(guestMembership.id)
+  }
+
+  const { error: markGuestError } = await supabase
+    .from('guest_identities')
+    .update({
+      upgraded_to_profile_id: profile.id,
+    })
+    .eq('id', guestMembership.guest_identity_id)
+
+  if (markGuestError) throw markGuestError
+
+  return {
+    crewId: guestMembership.crew_id as string,
+    guestName: guestMembership.guest_identities?.display_name ?? 'Guest',
+    guestIdentityId: guestMembership.guest_identity_id as string,
+    targetMembershipId,
   }
 }
 
@@ -351,6 +684,16 @@ async function requireActorMembership(actor: RequestActor, crewId: string) {
   return membership
 }
 
+async function requireCrewManagerMembership(actor: RequestActor, crewId: string) {
+  const membership = await requireActorMembership(actor, crewId)
+
+  if (membership.role !== 'creator' && membership.role !== 'admin') {
+    throw new Error('Creator or admin permissions are required for that crew action.')
+  }
+
+  return membership
+}
+
 async function ensureNightParticipant(nightId: string, membershipId: string) {
   const supabase = getServiceRoleClient()
   const { data: existing, error } = await supabase
@@ -385,7 +728,7 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
   } else if (actor.kind === 'guest') {
     guestIdentityId = actor.session.guestIdentityId ?? null
   } else {
-    return { crews: [], crewDataById: {}, notifications: [] }
+    return { crews: [], crewDataById: {}, notifications: [], viewerUser: null, claimableGuests: [] }
   }
 
   let actorMembershipsQuery = supabase
@@ -397,7 +740,7 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
   } else if (guestIdentityId) {
     actorMembershipsQuery = actorMembershipsQuery.eq('guest_identity_id', guestIdentityId)
   } else {
-    return { crews: [], crewDataById: {}, notifications: [] }
+    return { crews: [], crewDataById: {}, notifications: [], viewerUser: null, claimableGuests: [] }
   }
 
   const { data: actorMemberships, error: actorMembershipError } = await actorMembershipsQuery
@@ -407,7 +750,13 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
   const crewIds = [...new Set(activeMemberships.map((membership: any) => membership.crew_id))]
 
   if (!crewIds.length) {
-    return { crews: [], crewDataById: {}, notifications: [] }
+    return {
+      crews: [],
+      crewDataById: {},
+      notifications: [],
+      viewerUser: profile ? buildViewerUser(profile, activeMemberships) : null,
+      claimableGuests: [],
+    }
   }
 
   const [
@@ -427,21 +776,26 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
   const nights = nightResult.data ?? []
   const nightIds = nights.map((night: any) => night.id)
 
-  const [
-    participantResult,
-    betResult,
-    notificationResult,
-    ledgerResult,
-  ] = await Promise.all([
+  const notificationQuery = profile
+    ? supabase
+        .from('notifications')
+        .select('*')
+        .or(`profile_id.eq.${profile.id},membership_id.in.(${activeMemberships.map((membership: any) => membership.id).join(',')})`)
+        .order('created_at', { ascending: false })
+    : supabase
+        .from('notifications')
+        .select('*')
+        .in('membership_id', activeMemberships.map((membership: any) => membership.id))
+        .order('created_at', { ascending: false })
+
+  const [participantResult, betResult, notificationResult, ledgerResult] = await Promise.all([
     nightIds.length
       ? supabase.from('night_participants').select('*').in('night_id', nightIds)
       : Promise.resolve({ data: [], error: null } as any),
     nightIds.length
       ? supabase.from('bets').select('*').in('night_id', nightIds).order('created_at', { ascending: false })
       : Promise.resolve({ data: [], error: null } as any),
-    profile
-      ? supabase.from('notifications').select('*').eq('profile_id', profile.id).order('created_at', { ascending: false })
-      : supabase.from('notifications').select('*').in('membership_id', activeMemberships.map((membership: any) => membership.id)).order('created_at', { ascending: false }),
+    notificationQuery,
     supabase.from('ledger_events').select('*').in('crew_id', crewIds).order('created_at', { ascending: false }),
   ])
 
@@ -663,10 +1017,36 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
     read: Boolean(notification.read_at),
   }))
 
+  const viewerUser = profile
+    ? buildViewerUser(profile, membershipRows.filter((membership: any) => membership.profile_id === profile.id))
+    : activeMemberships[0]
+      ? buildUserFromMembership(activeMemberships[0])
+      : null
+
+  const claimableGuests: ClaimableGuest[] = profile
+    ? membershipRows
+        .filter((membership: any) =>
+          membership.actor_type === 'guest' &&
+          crewIds.includes(membership.crew_id) &&
+          !membership.guest_identities?.upgraded_to_profile_id
+        )
+        .map((membership: any) => ({
+          guestMembershipId: membership.id,
+          guestIdentityId: membership.guest_identity_id,
+          guestName: membership.guest_identities?.display_name ?? 'Guest',
+          crewId: membership.crew_id,
+          crewName: (crewResult.data ?? []).find((crew: any) => crew.id === membership.crew_id)?.name ?? 'BeerScore',
+          status: membership.status,
+          joinedAt: asDate(membership.joined_at).toISOString(),
+        }))
+    : []
+
   return {
     crews,
     crewDataById,
     notifications,
+    viewerUser,
+    claimableGuests,
   }
 }
 
@@ -1060,15 +1440,72 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       break
     }
 
+    case 'claimGuestMembership': {
+      if (actor.kind !== 'authenticated') {
+        throw new Error('Only authenticated users can claim guest stats.')
+      }
+
+      if (!payload.guestMembershipId) {
+        throw new Error('Select a guest to claim.')
+      }
+
+      const profile = await ensureProfile(actor.authUser)
+
+      const { data: guestMembership, error: guestMembershipError } = await supabase
+        .from('crew_memberships')
+        .select('*, guest_identities(*)')
+        .eq('id', payload.guestMembershipId)
+        .single()
+
+      if (guestMembershipError) throw guestMembershipError
+      if (guestMembership.actor_type !== 'guest' || !guestMembership.guest_identity_id) {
+        throw new Error('That guest can no longer be claimed.')
+      }
+
+      if (payload.guestIdentityId && guestMembership.guest_identity_id !== payload.guestIdentityId) {
+        throw new Error('That guest session no longer matches this claim.')
+      }
+
+      const { data: existingMembership } = await supabase
+        .from('crew_memberships')
+        .select('*')
+        .eq('crew_id', guestMembership.crew_id)
+        .eq('profile_id', profile.id)
+        .maybeSingle()
+
+      if (!existingMembership && payload.source === 'manual-claim') {
+        throw new Error('Join this crew with your account before claiming a past guest.')
+      }
+
+      const claimResult = await mergeGuestMembershipIntoProfile(profile, payload.guestMembershipId)
+
+      const actorMembershipId = existingMembership?.id ?? claimResult.targetMembershipId
+      await recordAuditLog(guestMembership.crew_id, actorMembershipId, 'guest_claimed', 'crew_membership', payload.guestMembershipId, {
+        guestIdentityId: claimResult.guestIdentityId,
+        targetMembershipId: claimResult.targetMembershipId,
+        source: payload.source ?? 'manual-claim',
+      })
+
+      await notifyCrewMembers(guestMembership.crew_id, {
+        type: 'member_joined',
+        title: `${profile.display_name} claimed guest stats`,
+        message: `${profile.display_name} claimed ${claimResult.guestName}'s guest history.`,
+        payload: { membershipId: claimResult.targetMembershipId },
+        excludeMembershipId: claimResult.targetMembershipId,
+      })
+
+      break
+    }
+
     case 'renameCrew': {
-      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const actorMembership = await requireCrewManagerMembership(actor, payload.crewId)
       await supabase.from('crews').update({ name: payload.name?.trim() || 'Crew' }).eq('id', payload.crewId)
       await recordAuditLog(payload.crewId, actorMembership.id, 'crew_renamed', 'crew', payload.crewId, { name: payload.name })
       break
     }
 
     case 'changeDrinkTheme': {
-      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const actorMembership = await requireCrewManagerMembership(actor, payload.crewId)
       await Promise.all([
         supabase.from('crews').update({ drink_theme: payload.theme }).eq('id', payload.crewId),
         supabase.from('crew_settings').upsert({
@@ -1081,7 +1518,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
     }
 
     case 'deleteCrew': {
-      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const actorMembership = await requireCrewManagerMembership(actor, payload.crewId)
       await supabase.from('crews').update({ archived_at: new Date().toISOString() }).eq('id', payload.crewId)
       await recordAuditLog(payload.crewId, actorMembership.id, 'crew_archived', 'crew', payload.crewId)
       break
@@ -1098,7 +1535,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
     }
 
     case 'kickMember': {
-      const actorMembership = await requireActorMembership(actor, payload.crewId)
+      const actorMembership = await requireCrewManagerMembership(actor, payload.crewId)
       if (!payload.memberId || payload.memberId === actorMembership.id) {
         throw new Error('Select a valid member to remove.')
       }

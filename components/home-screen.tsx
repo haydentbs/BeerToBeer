@@ -457,8 +457,8 @@ export function HomeScreen({
                   type="text"
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                  placeholder="XXXX-XX"
-                  maxLength={8}
+                  placeholder="DEMO1234"
+                  maxLength={12}
                   className="w-full px-4 py-3 rounded-xl bg-surface text-card-foreground font-mono font-bold border-2 border-border focus:border-primary focus:outline-none transition-colors text-lg text-center tracking-widest uppercase"
                   autoFocus
                 />

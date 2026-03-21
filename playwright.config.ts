@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000'
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3100'
 const useGoogleAuth = process.env.PLAYWRIGHT_USE_GOOGLE_AUTH === '1'
 const useAppServer = process.env.PLAYWRIGHT_USE_APP_SERVER !== '0'
 
@@ -48,7 +48,7 @@ export default defineConfig({
   projects,
   webServer: useAppServer
     ? {
-        command: 'npx next dev --hostname 127.0.0.1 --port 3000',
+        command: 'npx next dev --hostname 127.0.0.1 --port 3100',
         url: baseURL,
         reuseExistingServer: !process.env.CI,
       }

@@ -98,8 +98,8 @@ export function LandingPage({ onJoin, onCreate }: LandingPageProps) {
                 type="text"
                 value={crewCode}
                 onChange={(e) => setCrewCode(e.target.value.toUpperCase())}
-                placeholder="ABC123"
-                maxLength={6}
+                placeholder="DEMO1234"
+                maxLength={12}
                 className="w-full px-4 py-3 rounded-xl bg-card text-card-foreground font-mono font-bold border-3 border-border focus:border-primary focus:outline-none transition-colors text-lg text-center tracking-widest uppercase"
               />
             </div>

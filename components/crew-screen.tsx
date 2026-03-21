@@ -10,6 +10,7 @@ import { useTheme } from './theme-provider'
 interface CrewScreenProps {
   crew: Crew
   currentUserId: string
+  currentMembershipId?: string | null
   onStartNight: (nightThemeOverride?: DrinkTheme) => void
   onLeaveNight: () => void
   onRejoinNight: () => void
@@ -20,7 +21,7 @@ interface CrewScreenProps {
   onChangeDrinkTheme: (theme: DrinkTheme) => void
 }
 
-export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, onRejoinNight, onRenameCrew, onKickMember, onDeleteCrew, onLeaveCrew, onChangeDrinkTheme }: CrewScreenProps) {
+export function CrewScreen({ crew, currentUserId, currentMembershipId = null, onStartNight, onLeaveNight, onRejoinNight, onRenameCrew, onKickMember, onDeleteCrew, onLeaveCrew, onChangeDrinkTheme }: CrewScreenProps) {
   const [showInvite, setShowInvite] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showRename, setShowRename] = useState(false)
@@ -33,7 +34,11 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
   const [nightThemeOverride, setNightThemeOverride] = useState<DrinkTheme | null>(null)
   const { drinkEmoji, setActiveDrinkTheme } = useTheme()
 
-  const currentMember = crew.members.find((member) => member.id === currentUserId)
+  const isCurrentUser = (member: Crew['members'][number]) =>
+    member.id === currentUserId ||
+    (currentMembershipId != null && getCrewMemberMembershipId(member) === currentMembershipId)
+
+  const currentMember = crew.members.find(isCurrentUser)
   const isCreator = Boolean(currentMember && (currentMember.role ? currentMember.role === 'creator' : crew.members[0]?.id === currentUserId))
 
   const handleCopyCode = async () => {
@@ -53,6 +58,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
           </div>
           <button
             onClick={() => setShowSettings(true)}
+            aria-label="Open crew settings"
             className="p-2 rounded-lg border-2 border-border hover:bg-surface transition-colors"
           >
             <Settings className="h-5 w-5 text-muted-foreground" />
@@ -81,7 +87,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
 
         {/* Night Status */}
         {crew.currentNight ? (() => {
-          const isIn = crew.currentNight.participants.some((p) => p.id === currentUserId)
+          const isIn = crew.currentNight.participants.some(isCurrentUser)
           const count = crew.currentNight.participants.length
 
           if (isIn) {
@@ -159,7 +165,8 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
           {crew.members.map((member, index) => {
             const memberMembershipId = getCrewMemberMembershipId(member) ?? member.id
             const isCreator = isCrewCreator(member, index)
-            const isYou = member.id === currentUserId
+            const isYou = isCurrentUser(member)
+            const isGuest = member.role === 'guest'
 
             return (
               <div
@@ -169,32 +176,61 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                 <div className="flex items-center gap-3">
                   <div className={cn(
                     'w-10 h-10 rounded-full flex items-center justify-center',
-                    isYou ? 'bg-primary' : 'bg-secondary'
+                    isGuest
+                      ? 'bg-muted'
+                      : isYou
+                        ? 'bg-primary'
+                        : 'bg-secondary'
                   )}>
                     <span className={cn(
                       'font-bold',
-                      isYou ? 'text-primary-foreground' : 'text-secondary-foreground'
+                      isGuest
+                        ? 'text-muted-foreground'
+                        : isYou
+                          ? 'text-primary-foreground'
+                          : 'text-secondary-foreground'
                     )}>
                       {member.initials}
                     </span>
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-card-foreground">
+                      <span
+                        data-testid="member-name"
+                        className={cn(
+                          'font-semibold',
+                          isGuest ? 'text-muted-foreground' : 'text-card-foreground'
+                        )}
+                      >
                         {member.name}
-                        {isYou && ' (you)'}
                       </span>
+                      {isYou && (
+                        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          You
+                        </span>
+                      )}
+                      {isGuest && (
+                        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          ~ Guest
+                        </span>
+                      )}
                       {isCreator && (
                         <Crown className="h-4 w-4 text-primary" />
                       )}
                     </div>
-                    <span className="text-xs text-muted-foreground">
+                    <span
+                      data-testid="member-role"
+                      className={cn(
+                        'text-xs',
+                        isGuest ? 'text-muted-foreground' : 'text-muted-foreground'
+                      )}
+                    >
                       {member.role === 'admin'
                         ? 'Crew admin'
                         : isCreator
                           ? 'Crew creator'
-                          : member.role === 'guest'
-                            ? 'Guest'
+                          : isGuest
+                            ? '~ Guest'
                             : 'Member'}
                     </span>
                   </div>
@@ -399,7 +435,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                   <div className="px-3 pt-3 pb-1">
                     <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Manage Members</span>
                   </div>
-                  {crew.members.filter(m => m.id !== currentUserId).map((member) => {
+                  {crew.members.filter((member) => !isCurrentUser(member)).map((member) => {
                     const memberMembershipId = getCrewMemberMembershipId(member) ?? member.id
                     const isCreatorMember = isCrewCreator(member, crew.members.findIndex((crewMember) => crewMember.id === member.id))
 
@@ -578,7 +614,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                             {i + 1}
                           </span>
                           <span className="font-semibold text-foreground">
-                            {entry.user.id === currentUserId ? 'You' : entry.user.name}
+                            {isCurrentUser(entry.user) ? 'You' : entry.user.name}
                           </span>
                         </div>
                         <span className={cn(

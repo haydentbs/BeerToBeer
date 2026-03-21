@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Beer, LogIn, Users } from 'lucide-react'
+import { DEMO_CREW_CODE } from '@/lib/demo-crew'
 
 interface AuthActionResult {
   error?: string
@@ -98,11 +99,14 @@ export function OnboardingScreen({
               type="text"
               value={crewCode}
               onChange={(e) => setCrewCode(e.target.value.toUpperCase())}
-              placeholder="XXXX-XX"
-              maxLength={8}
+              placeholder="DEMO1234"
+              maxLength={12}
               className="w-full px-4 py-3 rounded-xl bg-card text-card-foreground font-mono font-bold border-3 border-border focus:border-primary focus:outline-none transition-colors text-lg text-center tracking-widest uppercase"
               disabled={isSubmitting}
             />
+            <p className="mt-2 text-xs text-muted-foreground text-center">
+              Permanent test crew: <span className="font-mono font-semibold text-foreground">{DEMO_CREW_CODE}</span>. Dashes and spaces are ignored.
+            </p>
           </div>
 
           <div>
