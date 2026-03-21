@@ -1,7 +1,7 @@
 'use client'
 
 import { startTransition, useEffect, useMemo, useRef, useState, useCallback } from 'react'
-import type { User as SupabaseUser } from '@supabase/supabase-js'
+import type { Session as SupabaseSession, SupabaseClient, User as SupabaseUser } from '@supabase/supabase-js'
 import { OnboardingScreen } from '@/components/onboarding-screen'
 import { HomeScreen } from '@/components/home-screen'
 import { AppHeader } from '@/components/app-header'
@@ -81,6 +81,52 @@ const LEGACY_ACTIVE_TAB_KEY = 'beerscore_active_tab'
 
 function normalizeInviteCode(value: string) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
+function hasOAuthCallbackParams() {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  const hash = window.location.hash
+  const search = window.location.search
+
+  return (
+    hash.includes('access_token=') ||
+    hash.includes('refresh_token=') ||
+    search.includes('code=') ||
+    search.includes('error=')
+  )
+}
+
+function readOAuthCallbackCode() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  return new URL(window.location.href).searchParams.get('code')
+}
+
+async function waitForAdoptedSession(
+  supabase: SupabaseClient,
+  attempts = 20,
+  delayMs = 250
+): Promise<SupabaseSession | null> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    if (session?.user) {
+      return session
+    }
+
+    if (attempt < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+  }
+
+  return null
 }
 
 function getDefaultRouteState(): AppRouteState {
@@ -554,19 +600,28 @@ export default function BeerScoreApp() {
 
     const restoreSession = async () => {
       setIsAuthReady(false)
+      const isOAuthCallback = hasOAuthCallbackParams()
+      const callbackCode = readOAuthCallbackCode()
+
       authFallbackTimer = setTimeout(() => {
         if (!isMounted) {
           return
         }
 
-        setAuthNotice('Supabase session check timed out. You can still continue with Google or join as a guest.')
+        setAuthNotice(
+          isOAuthCallback
+            ? 'Google sign-in is taking longer than expected. If this does not finish, try signing in again.'
+            : 'Supabase session check timed out. You can still continue with Google or join as a guest.'
+        )
         setIsAuthReady(true)
-      }, 10000)
+      }, isOAuthCallback ? 20000 : 10000)
 
       const {
         data: { session: restoredSession },
         error: sessionError,
-      } = await supabase.auth.getSession()
+      } = callbackCode
+        ? await supabase.auth.exchangeCodeForSession(callbackCode)
+        : await supabase.auth.getSession()
 
       if (!isMounted) {
         return
@@ -582,7 +637,18 @@ export default function BeerScoreApp() {
         return
       }
 
-      if (!restoredSession?.user) {
+      const adoptedSession =
+        restoredSession?.user
+          ? restoredSession
+          : isOAuthCallback
+          ? await waitForAdoptedSession(supabase)
+          : null
+
+      if (!isMounted) {
+        return
+      }
+
+      if (!adoptedSession?.user) {
         clearAuthFallback()
         if (!restoreDevSession() && !restoreGuestSession()) {
           applyAuthenticatedUser(null)
@@ -594,7 +660,7 @@ export default function BeerScoreApp() {
       if (!getPendingGuestClaimFlag()) {
         clearGuestSessionCookie()
       }
-      applyAuthenticatedUser(restoredSession.user)
+      applyAuthenticatedUser(adoptedSession.user)
       setAuthNotice(null)
       clearAuthFallback()
       setIsAuthReady(true)
@@ -604,7 +670,7 @@ export default function BeerScoreApp() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (!isMounted) {
         return
       }
@@ -614,7 +680,8 @@ export default function BeerScoreApp() {
           clearGuestSessionCookie()
         }
         applyAuthenticatedUser(nextSession.user)
-      } else if (!restoreDevSession() && !restoreGuestSession()) {
+        setAuthNotice(null)
+      } else if (!(event === 'INITIAL_SESSION' && hasOAuthCallbackParams()) && !restoreDevSession() && !restoreGuestSession()) {
         applyAuthenticatedUser(null)
       }
 
