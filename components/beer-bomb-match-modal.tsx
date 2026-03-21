@@ -399,7 +399,7 @@ export function BeerBombMatchModal({
 
     setBusyAction('turn')
     setAnimatingSlotIndex(index)
-    await new Promise((resolve) => window.setTimeout(resolve, 150))
+    await new Promise((resolve) => window.setTimeout(resolve, 420))
 
     try {
       await onTakeTurn(match.id, index)
@@ -698,7 +698,7 @@ export function BeerBombMatchModal({
                       >
                         <div
                           className={cn(
-                            'absolute inset-x-2 top-1 rounded-full transition-all duration-150',
+                            'absolute inset-x-2 top-1 rounded-full transition-all duration-300',
                             slot.state === 'bomb-hit'
                               ? 'h-8 bg-loss/70 blur-[2px]'
                               : slot.state === 'safe-empty'
@@ -712,7 +712,7 @@ export function BeerBombMatchModal({
                         <div className={cn('relative flex h-full flex-col items-center justify-end gap-1', shouldShake && 'animate-pulse')}>
                           <div
                             className={cn(
-                              'flex w-full flex-1 items-center justify-center transition-all duration-150',
+                              'flex w-full flex-1 items-center justify-center transition-all duration-300',
                               slot.state === 'draining' && 'translate-y-2 scale-90 opacity-70',
                               slot.state === 'safe-empty' && 'translate-y-1 opacity-65',
                               slot.state === 'bomb-hit' && 'scale-110'
