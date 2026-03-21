@@ -11,6 +11,7 @@ import { LedgerScreen } from '@/components/ledger-screen'
 import { LeaderboardScreen } from '@/components/leaderboard-screen'
 import { CrewScreen } from '@/components/crew-screen'
 import { CreateBetModal } from '@/components/create-bet-modal'
+import { ProfileModal } from '@/components/profile-modal'
 import {
   buildAppSession,
   buildGuestSession,
@@ -60,6 +61,7 @@ export default function BeerScoreApp() {
   const [activeCrewId, setActiveCrewId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'tonight' | 'ledger' | 'leaderboard' | 'crew'>('tonight')
   const [showCreateBet, setShowCreateBet] = useState(false)
+  const [showProfile, setShowProfile] = useState(false)
   const [crews, setCrews] = useState<Crew[]>(mockCrews)
   const [crewDataById, setCrewDataById] = useState(mockCrewData)
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications)
@@ -587,6 +589,7 @@ export default function BeerScoreApp() {
         onBack={handleBackToHome}
         onLeave={handleLeaveCrew}
         onSignOut={handleSignOut}
+        onOpenProfile={() => setShowProfile(true)}
         onMarkNotificationsRead={handleMarkNotificationsRead}
         isSigningOut={isSigningOut}
       />
@@ -650,6 +653,39 @@ export default function BeerScoreApp() {
         isOpen={showCreateBet}
         onClose={() => setShowCreateBet(false)}
         onCreate={handleCreateBet}
+      />
+
+      <ProfileModal
+        isOpen={showProfile}
+        onClose={() => setShowProfile(false)}
+        userName={session.user.name}
+        userEmail={session.email}
+        userInitials={session.user.initials || session.user.name.slice(0, 2).toUpperCase()}
+        isGuest={session.isGuest}
+        crews={crews.map((crew) => ({
+          name: crew.name,
+          netPosition: getNetPosition(session.user.id, crewDataById[crew.id]?.allTimeLedger ?? []),
+        }))}
+        stats={{
+          totalBetsPlaced: crews.reduce((sum, crew) => {
+            const nights = crew.pastNights.length + (crew.currentNight ? 1 : 0)
+            return sum + nights * 3 // mock estimate
+          }, 0),
+          totalWins: 12,
+          winRate: 0.58,
+          totalDrinksWon: crews.reduce((sum, crew) => {
+            const net = getNetPosition(session.user.id, crewDataById[crew.id]?.allTimeLedger ?? [])
+            return sum + Math.max(0, net)
+          }, 0),
+          totalDrinksLost: crews.reduce((sum, crew) => {
+            const net = getNetPosition(session.user.id, crewDataById[crew.id]?.allTimeLedger ?? [])
+            return sum + Math.abs(Math.min(0, net))
+          }, 0),
+          bestNight: 5.4,
+          currentStreak: 2,
+        }}
+        onSignOut={handleSignOut}
+        isSigningOut={isSigningOut}
       />
     </main>
   )
