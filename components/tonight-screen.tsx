@@ -56,6 +56,10 @@ function createSoloBeerBombMatch(currentUser: ReturnType<typeof useCurrentUser>)
 
 interface TonightScreenProps {
   night: Night
+  selectedBetId: string | null
+  selectedBeerBombMatchId: string | null
+  onSelectBet: (betId: string | null) => void
+  onSelectBeerBombMatch: (matchId: string | null) => void
   onWager: (betId: string, optionId: string, drinks: number) => void
   onBeerBombAccept: (matchId: string) => Promise<void> | void
   onBeerBombDecline: (matchId: string) => Promise<void> | void
@@ -65,6 +69,10 @@ interface TonightScreenProps {
 
 export function TonightScreen({
   night,
+  selectedBetId,
+  selectedBeerBombMatchId,
+  onSelectBet,
+  onSelectBeerBombMatch,
   onWager,
   onBeerBombAccept,
   onBeerBombDecline,
@@ -72,8 +80,7 @@ export function TonightScreen({
   onBeerBombTurn,
 }: TonightScreenProps) {
   const currentUser = useCurrentUser()
-  const [selectedBet, setSelectedBet] = useState<Bet | null>(null)
-  const [selectedBeerBombMatch, setSelectedBeerBombMatch] = useState<BeerBombMatch | null>(null)
+  const [devSoloBeerBombMatch, setDevSoloBeerBombMatch] = useState<BeerBombMatch | null>(null)
   const { drinkEmoji } = useTheme()
 
   const miniGameMatches = (night.miniGameMatches ?? []) as unknown as BeerBombMatch[]
@@ -81,27 +88,29 @@ export function TonightScreen({
   const activeBets = night.bets.filter((bet) => ['open', 'pending_result', 'disputed'].includes(bet.status))
   const resolvedBets = night.bets.filter((bet) => ['resolved', 'void', 'cancelled'].includes(bet.status))
   const totalPool = night.bets.reduce((acc, bet) => acc + bet.totalPool, 0)
-  const liveSelectedBet = selectedBet ? betsById.get(selectedBet.id) ?? selectedBet : null
-  const liveSelectedBeerBombMatch = selectedBeerBombMatch?.isDevSolo
-    ? selectedBeerBombMatch
-    : selectedBeerBombMatch
-      ? miniGameMatches.find((match) => match.id === selectedBeerBombMatch.id) ?? selectedBeerBombMatch
+  const liveSelectedBet = selectedBetId ? betsById.get(selectedBetId) ?? null : null
+  const liveSelectedBeerBombMatch = devSoloBeerBombMatch?.id === selectedBeerBombMatchId
+    ? devSoloBeerBombMatch
+    : selectedBeerBombMatchId
+      ? miniGameMatches.find((match) => match.id === selectedBeerBombMatchId) ?? null
       : null
   const selectedBeerBombLinkedBet =
     liveSelectedBeerBombMatch?.betId ? betsById.get(liveSelectedBeerBombMatch.betId) ?? null : null
 
   const handleStartSoloBeerBomb = () => {
-    setSelectedBeerBombMatch(createSoloBeerBombMatch(currentUser))
+    const soloMatch = createSoloBeerBombMatch(currentUser)
+    setDevSoloBeerBombMatch(soloMatch)
+    onSelectBeerBombMatch(soloMatch.id)
   }
 
   const handleBeerBombTurnWithDevSupport = async (matchId: string, slotIndex: number) => {
-    const activeMatch = selectedBeerBombMatch
+    const activeMatch = devSoloBeerBombMatch
     if (activeMatch?.id === matchId && activeMatch.isDevSolo) {
       const hitBomb = activeMatch.bombSlotIndex === slotIndex
       const membershipId = currentUser.membershipId ?? currentUser.id
       const nextUpdatedAt = new Date()
 
-      setSelectedBeerBombMatch({
+      setDevSoloBeerBombMatch({
         ...activeMatch,
         revealedSlotIndices: [...activeMatch.revealedSlotIndices, slotIndex],
         status: hitBomb ? 'completed' : 'active',
@@ -162,7 +171,7 @@ export function TonightScreen({
                   match={match}
                   linkedBet={match.betId ? betsById.get(match.betId) ?? null : null}
                   currentMembershipId={currentUser.membershipId ?? currentUser.id}
-                  onOpen={setSelectedBeerBombMatch}
+                  onOpen={(selectedMatch) => onSelectBeerBombMatch(selectedMatch.id)}
                 />
               ))}
             </div>
@@ -177,7 +186,7 @@ export function TonightScreen({
             </div>
             <div className="space-y-2">
               {activeBets.map((bet) => (
-                <BetCardCompact key={bet.id} bet={bet} onTap={setSelectedBet} />
+                <BetCardCompact key={bet.id} bet={bet} onTap={(selectedBet) => onSelectBet(selectedBet.id)} />
               ))}
             </div>
           </section>
@@ -191,7 +200,7 @@ export function TonightScreen({
             </div>
             <div className="space-y-2">
               {resolvedBets.map((bet) => (
-                <BetCardCompact key={bet.id} bet={bet} onTap={setSelectedBet} />
+                <BetCardCompact key={bet.id} bet={bet} onTap={(selectedBet) => onSelectBet(selectedBet.id)} />
               ))}
             </div>
           </section>
@@ -211,7 +220,7 @@ export function TonightScreen({
       <BetDetailModal
         bet={liveSelectedBet}
         isOpen={!!liveSelectedBet}
-        onClose={() => setSelectedBet(null)}
+        onClose={() => onSelectBet(null)}
         onWager={onWager}
       />
 
@@ -220,7 +229,7 @@ export function TonightScreen({
         linkedBet={selectedBeerBombLinkedBet}
         isOpen={!!liveSelectedBeerBombMatch}
         currentMembershipId={currentUser.membershipId ?? currentUser.id}
-        onClose={() => setSelectedBeerBombMatch(null)}
+        onClose={() => onSelectBeerBombMatch(null)}
         onAccept={onBeerBombAccept}
         onDecline={onBeerBombDecline}
         onCancel={onBeerBombCancel}

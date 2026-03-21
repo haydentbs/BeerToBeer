@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { useState } from 'react'
 import { BeerScoreThemeProvider } from '@/components/theme-provider'
 import { TonightScreen } from '@/components/tonight-screen'
 import { CurrentUserProvider } from '@/lib/current-user'
@@ -34,10 +35,26 @@ function renderTonightScreen() {
     onBeerBombTurn: vi.fn(),
   }
 
+  function ControlledTonightScreen() {
+    const [selectedBetId, setSelectedBetId] = useState<string | null>(null)
+    const [selectedBeerBombMatchId, setSelectedBeerBombMatchId] = useState<string | null>(null)
+
+    return (
+      <TonightScreen
+        night={night}
+        selectedBetId={selectedBetId}
+        selectedBeerBombMatchId={selectedBeerBombMatchId}
+        onSelectBet={setSelectedBetId}
+        onSelectBeerBombMatch={setSelectedBeerBombMatchId}
+        {...handlers}
+      />
+    )
+  }
+
   render(
     <BeerScoreThemeProvider>
       <CurrentUserProvider user={currentUser}>
-        <TonightScreen night={night} {...handlers} />
+        <ControlledTonightScreen />
       </CurrentUserProvider>
     </BeerScoreThemeProvider>
   )

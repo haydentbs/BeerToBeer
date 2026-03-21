@@ -46,28 +46,138 @@ import {
 import type { AppMutationPayload, ClaimableGuest } from '@/lib/server/domain'
 
 type AppView = 'home' | 'crew'
+type CrewTab = 'tonight' | 'ledger' | 'leaderboard' | 'crew'
+type RouteModal = 'none' | 'create-bet' | 'profile' | 'bet-detail' | 'beer-bomb-detail'
+
+interface AppRouteState {
+  crewId: string | null
+  tab: CrewTab
+  modal: RouteModal
+  betId?: string
+  matchId?: string
+}
+
 const PENDING_GUEST_CLAIM_KEY = 'beerscore_pending_guest_claim'
-const ACTIVE_CREW_KEY = 'beerscore_active_crew'
-const ACTIVE_TAB_KEY = 'beerscore_active_tab'
+const ROUTE_STATE_KEY = 'beerscore_route_state'
+const LEGACY_ACTIVE_CREW_KEY = 'beerscore_active_crew'
+const LEGACY_ACTIVE_TAB_KEY = 'beerscore_active_tab'
 
 function normalizeInviteCode(value: string) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
 }
 
-function getSavedCrewId(): string | null {
-  if (typeof window === 'undefined') return null
-  return window.localStorage.getItem(ACTIVE_CREW_KEY)
+function getDefaultRouteState(): AppRouteState {
+  return {
+    crewId: null,
+    tab: 'tonight',
+    modal: 'none',
+  }
 }
 
-function getSavedTab(): 'tonight' | 'ledger' | 'leaderboard' | 'crew' {
-  if (typeof window === 'undefined') return 'tonight'
-  const tab = window.localStorage.getItem(ACTIVE_TAB_KEY)
-  if (tab === 'tonight' || tab === 'ledger' || tab === 'leaderboard' || tab === 'crew') return tab
-  return 'tonight'
+function isCrewTab(tab: string): tab is CrewTab {
+  return tab === 'tonight' || tab === 'ledger' || tab === 'leaderboard' || tab === 'crew'
 }
 
-function getSavedView(): AppView {
-  return getSavedCrewId() ? 'crew' : 'home'
+function isRouteModal(modal: string): modal is RouteModal {
+  return modal === 'none' || modal === 'create-bet' || modal === 'profile' || modal === 'bet-detail' || modal === 'beer-bomb-detail'
+}
+
+function getSavedRouteState(): AppRouteState {
+  if (typeof window === 'undefined') {
+    return getDefaultRouteState()
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(ROUTE_STATE_KEY)
+    if (rawValue) {
+      const parsed = JSON.parse(rawValue) as Partial<AppRouteState>
+      const tab = typeof parsed.tab === 'string' && isCrewTab(parsed.tab) ? parsed.tab : 'tonight'
+      const modal = typeof parsed.modal === 'string' && isRouteModal(parsed.modal) ? parsed.modal : 'none'
+      const crewId = typeof parsed.crewId === 'string' && parsed.crewId ? parsed.crewId : null
+      const betId = typeof parsed.betId === 'string' && parsed.betId ? parsed.betId : undefined
+      const matchId = typeof parsed.matchId === 'string' && parsed.matchId ? parsed.matchId : undefined
+
+      if (modal === 'bet-detail' && !betId) {
+        return { crewId, tab, modal: 'none' }
+      }
+
+      if (modal === 'beer-bomb-detail' && !matchId) {
+        return { crewId, tab, modal: 'none' }
+      }
+
+      return {
+        crewId,
+        tab,
+        modal,
+        betId,
+        matchId,
+      }
+    }
+  } catch {
+    // Fall back to legacy storage.
+  }
+
+  const legacyCrewId = window.localStorage.getItem(LEGACY_ACTIVE_CREW_KEY)
+  const legacyTabValue = window.localStorage.getItem(LEGACY_ACTIVE_TAB_KEY)
+
+  return {
+    crewId: legacyCrewId || null,
+    tab: legacyTabValue && isCrewTab(legacyTabValue) ? legacyTabValue : 'tonight',
+    modal: 'none',
+  }
+}
+
+function setSavedRouteState(routeState: AppRouteState) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(ROUTE_STATE_KEY, JSON.stringify(routeState))
+}
+
+function clearSavedRouteState() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.removeItem(ROUTE_STATE_KEY)
+  window.localStorage.removeItem(LEGACY_ACTIVE_CREW_KEY)
+  window.localStorage.removeItem(LEGACY_ACTIVE_TAB_KEY)
+}
+
+function sanitizeSavedRouteState(routeState: AppRouteState, crews: Crew[]): AppRouteState {
+  if (!routeState.crewId) {
+    return getDefaultRouteState()
+  }
+
+  const restoredCrew = crews.find((crew) => crew.id === routeState.crewId)
+  if (!restoredCrew) {
+    return getDefaultRouteState()
+  }
+
+  if (routeState.modal === 'bet-detail' && !routeState.betId) {
+    return {
+      crewId: routeState.crewId,
+      tab: routeState.tab,
+      modal: 'none',
+    }
+  }
+
+  if (routeState.modal === 'beer-bomb-detail' && !routeState.matchId) {
+    return {
+      crewId: routeState.crewId,
+      tab: routeState.tab,
+      modal: 'none',
+    }
+  }
+
+  return {
+    crewId: routeState.crewId,
+    tab: routeState.tab,
+    modal: routeState.modal,
+    betId: routeState.betId,
+    matchId: routeState.matchId,
+  }
 }
 
 function getPendingGuestClaimFlag() {
@@ -118,11 +228,13 @@ interface CreateMiniGameInput {
 
 export default function BeerScoreApp() {
   const [session, setSession] = useState<AppSession | null>(null)
-  const [view, setView] = useState<AppView>(() => getSavedCrewId() ? 'crew' : 'home')
-  const [activeCrewId, setActiveCrewId] = useState<string | null>(() => getSavedCrewId())
-  const [activeTab, setActiveTab] = useState<'tonight' | 'ledger' | 'leaderboard' | 'crew'>(() => getSavedTab())
-  const [showCreateBet, setShowCreateBet] = useState(false)
-  const [showProfile, setShowProfile] = useState(false)
+  const [view, setView] = useState<AppView>(() => getSavedRouteState().crewId ? 'crew' : 'home')
+  const [activeCrewId, setActiveCrewId] = useState<string | null>(() => getSavedRouteState().crewId)
+  const [activeTab, setActiveTab] = useState<CrewTab>(() => getSavedRouteState().tab)
+  const [showCreateBet, setShowCreateBet] = useState(() => getSavedRouteState().modal === 'create-bet')
+  const [showProfile, setShowProfile] = useState(() => getSavedRouteState().modal === 'profile')
+  const [selectedBetId, setSelectedBetId] = useState<string | null>(() => getSavedRouteState().modal === 'bet-detail' ? getSavedRouteState().betId ?? null : null)
+  const [selectedBeerBombMatchId, setSelectedBeerBombMatchId] = useState<string | null>(() => getSavedRouteState().modal === 'beer-bomb-detail' ? getSavedRouteState().matchId ?? null : null)
   const [crews, setCrews] = useState<Crew[]>([])
   const [crewDataById, setCrewDataById] = useState<Record<string, { tonightLedger: any[]; allTimeLedger: any[]; leaderboard: any[] }>>({})
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -133,6 +245,7 @@ export default function BeerScoreApp() {
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [isMutating, setIsMutating] = useState(false)
+  const [isRouteRestorePending, setIsRouteRestorePending] = useState(() => Boolean(getSavedRouteState().crewId))
   const [isCreatingCrew, setIsCreatingCrew] = useState(false)
   const [isJoiningCrew, setIsJoiningCrew] = useState(false)
   const [mutationError, setMutationError] = useState<string | null>(null)
@@ -157,16 +270,30 @@ export default function BeerScoreApp() {
       setNotifications([])
       setClaimableGuests([])
       setPendingCrewThemeById({})
+      setShowCreateBet(false)
+      setShowProfile(false)
+      setSelectedBetId(null)
+      setSelectedBeerBombMatchId(null)
       setView('home')
       setActiveCrewId(null)
+      setActiveTab('tonight')
+      setIsRouteRestorePending(false)
+      clearSavedRouteState()
       return
     }
 
+    const savedRouteState = getSavedRouteState()
+
     setSession(buildAppSession(authUser))
     setPendingCrewThemeById({})
-    setView(getSavedView())
-    setActiveCrewId(getSavedCrewId())
-    setActiveTab(getSavedTab())
+    setView(savedRouteState.crewId ? 'crew' : 'home')
+    setActiveCrewId(savedRouteState.crewId)
+    setActiveTab(savedRouteState.tab)
+    setShowCreateBet(savedRouteState.modal === 'create-bet')
+    setShowProfile(savedRouteState.modal === 'profile')
+    setSelectedBetId(savedRouteState.modal === 'bet-detail' ? savedRouteState.betId ?? null : null)
+    setSelectedBeerBombMatchId(savedRouteState.modal === 'beer-bomb-detail' ? savedRouteState.matchId ?? null : null)
+    setIsRouteRestorePending(Boolean(savedRouteState.crewId))
   }, [])
 
   const applyAppPayload = useCallback((payload: AppMutationPayload) => {
@@ -255,11 +382,18 @@ export default function BeerScoreApp() {
         return false
       }
 
+      const savedRouteState = getSavedRouteState()
+
       setSession(guestSession)
       setIsDataReady(false)
-      setView(getSavedView())
-      setActiveCrewId(getSavedCrewId())
-      setActiveTab(getSavedTab())
+      setView(savedRouteState.crewId ? 'crew' : 'home')
+      setActiveCrewId(savedRouteState.crewId)
+      setActiveTab(savedRouteState.tab)
+      setShowCreateBet(savedRouteState.modal === 'create-bet')
+      setShowProfile(savedRouteState.modal === 'profile')
+      setSelectedBetId(savedRouteState.modal === 'bet-detail' ? savedRouteState.betId ?? null : null)
+      setSelectedBeerBombMatchId(savedRouteState.modal === 'beer-bomb-detail' ? savedRouteState.matchId ?? null : null)
+      setIsRouteRestorePending(Boolean(savedRouteState.crewId))
       setAuthNotice(null)
       return true
     }
@@ -526,38 +660,157 @@ export default function BeerScoreApp() {
     }
   }, [isDataReady, session])
 
-  // Persist active crew and tab to localStorage so refreshes restore the view
   useEffect(() => {
-    if (activeCrewId) {
-      window.localStorage.setItem(ACTIVE_CREW_KEY, activeCrewId)
-    } else {
-      window.localStorage.removeItem(ACTIVE_CREW_KEY)
-    }
-    window.localStorage.setItem(ACTIVE_TAB_KEY, activeTab)
-  }, [activeCrewId, activeTab])
-
-  // If we restored a crew from localStorage but it's not in the user's crew list, reset to home
-  useEffect(() => {
-    if (isDataReady && activeCrewId && !crews.find((c) => c.id === activeCrewId)) {
-      setActiveCrewId(null)
-      setView('home')
-      setActiveDrinkTheme('beer')
-    }
-  }, [isDataReady, activeCrewId, crews, setActiveDrinkTheme])
-
-  useEffect(() => {
-    if (!isDataReady || !activeCrewId) {
+    if (!isAuthReady) {
       return
     }
 
-    const restoredCrew = visibleCrews.find((crew) => crew.id === activeCrewId)
+    if (!session) {
+      clearSavedRouteState()
+      return
+    }
+
+    if (view !== 'crew' || !activeCrewId) {
+      setSavedRouteState(getDefaultRouteState())
+      return
+    }
+
+    const modal: RouteModal = showCreateBet
+      ? 'create-bet'
+      : showProfile
+      ? 'profile'
+      : selectedBetId
+      ? 'bet-detail'
+      : selectedBeerBombMatchId
+      ? 'beer-bomb-detail'
+      : 'none'
+
+    setSavedRouteState({
+      crewId: activeCrewId,
+      tab: activeTab,
+      modal,
+      betId: modal === 'bet-detail' ? selectedBetId ?? undefined : undefined,
+      matchId: modal === 'beer-bomb-detail' ? selectedBeerBombMatchId ?? undefined : undefined,
+    })
+  }, [
+    activeCrewId,
+    activeTab,
+    isAuthReady,
+    selectedBeerBombMatchId,
+    selectedBetId,
+    session,
+    showCreateBet,
+    showProfile,
+    view,
+  ])
+
+  useEffect(() => {
+    if (!session || !isDataReady || !isRouteRestorePending) {
+      return
+    }
+
+    const savedRouteState = sanitizeSavedRouteState(getSavedRouteState(), visibleCrews)
+
+    if (!savedRouteState.crewId) {
+      setShowCreateBet(false)
+      setShowProfile(false)
+      setSelectedBetId(null)
+      setSelectedBeerBombMatchId(null)
+      setActiveCrewId(null)
+      setActiveTab('tonight')
+      setView('home')
+      setActiveDrinkTheme('beer')
+      clearSavedRouteState()
+      setIsRouteRestorePending(false)
+      return
+    }
+
+    const restoredCrew = visibleCrews.find((crew) => crew.id === savedRouteState.crewId)
     if (!restoredCrew) {
       return
     }
 
+    const hasSavedBet =
+      savedRouteState.modal === 'bet-detail' &&
+      savedRouteState.betId &&
+      Boolean(restoredCrew.currentNight?.bets.some((bet) => bet.id === savedRouteState.betId))
+
+    const hasSavedBeerBombMatch =
+      savedRouteState.modal === 'beer-bomb-detail' &&
+      savedRouteState.matchId &&
+      Boolean(restoredCrew.currentNight?.miniGameMatches.some((match) => match.id === savedRouteState.matchId))
+
     setView('crew')
+    setActiveCrewId(savedRouteState.crewId)
+    setActiveTab(savedRouteState.tab)
+    setShowCreateBet(savedRouteState.modal === 'create-bet')
+    setShowProfile(savedRouteState.modal === 'profile')
+    setSelectedBetId(hasSavedBet ? savedRouteState.betId ?? null : null)
+    setSelectedBeerBombMatchId(hasSavedBeerBombMatch ? savedRouteState.matchId ?? null : null)
     setActiveDrinkTheme(restoredCrew.currentNight?.drinkThemeOverride ?? restoredCrew.drinkTheme ?? 'beer')
-  }, [activeCrewId, isDataReady, setActiveDrinkTheme, visibleCrews])
+    setIsRouteRestorePending(false)
+  }, [isDataReady, isRouteRestorePending, session, setActiveDrinkTheme, visibleCrews])
+
+  useEffect(() => {
+    if (isRouteRestorePending || !isDataReady || !activeCrewId) {
+      return
+    }
+
+    const activeCrewStillExists = visibleCrews.some((crew) => crew.id === activeCrewId)
+    if (activeCrewStillExists) {
+      return
+    }
+
+    setShowCreateBet(false)
+    setShowProfile(false)
+    setSelectedBetId(null)
+    setSelectedBeerBombMatchId(null)
+    setActiveCrewId(null)
+    setActiveTab('tonight')
+    setView('home')
+    setActiveDrinkTheme('beer')
+    clearSavedRouteState()
+  }, [activeCrewId, isDataReady, isRouteRestorePending, setActiveDrinkTheme, visibleCrews])
+
+  useEffect(() => {
+    if (view !== 'crew' || !activeCrew) {
+      return
+    }
+
+    setActiveDrinkTheme(activeCrew.currentNight?.drinkThemeOverride ?? activeCrew.drinkTheme ?? 'beer')
+  }, [activeCrew, setActiveDrinkTheme, view])
+
+  useEffect(() => {
+    if (!activeCrewId || !selectedBetId) {
+      return
+    }
+
+    const betStillExists = Boolean(
+      visibleCrews
+        .find((crew) => crew.id === activeCrewId)
+        ?.currentNight?.bets.some((bet) => bet.id === selectedBetId)
+    )
+
+    if (!betStillExists) {
+      setSelectedBetId(null)
+    }
+  }, [activeCrewId, selectedBetId, visibleCrews])
+
+  useEffect(() => {
+    if (!activeCrewId || !selectedBeerBombMatchId) {
+      return
+    }
+
+    const matchStillExists = Boolean(
+      visibleCrews
+        .find((crew) => crew.id === activeCrewId)
+        ?.currentNight?.miniGameMatches.some((match) => match.id === selectedBeerBombMatchId)
+    )
+
+    if (!matchStillExists) {
+      setSelectedBeerBombMatchId(null)
+    }
+  }, [activeCrewId, selectedBeerBombMatchId, visibleCrews])
 
   const crewNetPositions = useMemo(() => {
     const positions: Record<string, number> = {}
@@ -618,12 +871,10 @@ export default function BeerScoreApp() {
       setSession(payload.session)
       applyAppPayload(payload)
       const normalizedCrewCode = crewCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
-      const joinedCrew = payload.crews.find((crew) => crew.inviteCode === normalizedCrewCode) ?? payload.crews[0]
+      const joinedCrew =
+        payload.crews.find((crew) => normalizeInviteCode(crew.inviteCode) === normalizedCrewCode) ?? payload.crews[0]
       if (joinedCrew) {
-        setActiveCrewId(joinedCrew.id)
-        setActiveTab('tonight')
-        setView('crew')
-        setActiveDrinkTheme(joinedCrew.currentNight?.drinkThemeOverride ?? joinedCrew.drinkTheme ?? 'beer')
+        handleSelectCrew(joinedCrew.id)
       }
       setAuthNotice(null)
       return { message: `Playing as ${payload.session.user.name}${joinedCrew ? ` in ${joinedCrew.name}` : ''}.` }
@@ -692,7 +943,15 @@ export default function BeerScoreApp() {
     }
   }
 
+  const clearRestorableModalState = useCallback(() => {
+    setShowCreateBet(false)
+    setShowProfile(false)
+    setSelectedBetId(null)
+    setSelectedBeerBombMatchId(null)
+  }, [])
+
   const handleSelectCrew = (crewId: string) => {
+    clearRestorableModalState()
     setActiveCrewId(crewId)
     setActiveTab('tonight')
     setView('crew')
@@ -703,9 +962,45 @@ export default function BeerScoreApp() {
   }
 
   const handleBackToHome = () => {
+    clearRestorableModalState()
     setActiveCrewId(null)
+    setActiveTab('tonight')
     setView('home')
     setActiveDrinkTheme('beer')
+  }
+
+  const handleTabChange = (tab: CrewTab) => {
+    setActiveTab(tab)
+    setSelectedBetId(null)
+    setSelectedBeerBombMatchId(null)
+  }
+
+  const handleOpenCreateBet = () => {
+    setShowProfile(false)
+    setSelectedBetId(null)
+    setSelectedBeerBombMatchId(null)
+    setShowCreateBet(true)
+  }
+
+  const handleOpenProfile = () => {
+    setShowCreateBet(false)
+    setSelectedBetId(null)
+    setSelectedBeerBombMatchId(null)
+    setShowProfile(true)
+  }
+
+  const handleSelectBet = (betId: string | null) => {
+    setShowCreateBet(false)
+    setShowProfile(false)
+    setSelectedBeerBombMatchId(null)
+    setSelectedBetId(betId)
+  }
+
+  const handleSelectBeerBombMatch = (matchId: string | null) => {
+    setShowCreateBet(false)
+    setShowProfile(false)
+    setSelectedBetId(null)
+    setSelectedBeerBombMatchId(matchId)
   }
 
   // Shared wrapper: sets isMutating for any async mutation, surfaces errors to mutationError
@@ -741,10 +1036,7 @@ export default function BeerScoreApp() {
         payload.crews.find((crew) => crew.name === name.trim())
 
       if (createdCrew) {
-        setActiveCrewId(createdCrew.id)
-        setActiveTab('tonight')
-        setView('crew')
-        setActiveDrinkTheme(createdCrew.currentNight?.drinkThemeOverride ?? createdCrew.drinkTheme ?? 'beer')
+        handleSelectCrew(createdCrew.id)
       }
     }, 'Could not create crew.')
 
@@ -972,7 +1264,7 @@ export default function BeerScoreApp() {
     })
   }
 
-  if (!isAuthReady || (session && !isDataReady) || (session && (isCreatingCrew || isJoiningCrew))) {
+  if (!isAuthReady || (session && (!isDataReady || isRouteRestorePending)) || (session && (isCreatingCrew || isJoiningCrew))) {
     return (
       <main className="min-h-screen bg-background">
         <LoadingSpinner
@@ -981,6 +1273,8 @@ export default function BeerScoreApp() {
               ? 'Creating your crew…'
               : isJoiningCrew
               ? 'Joining your crew…'
+              : isRouteRestorePending
+              ? 'Restoring your tab…'
               : 'Checking your tab…'
           }
           submessage={
@@ -988,6 +1282,8 @@ export default function BeerScoreApp() {
               ? 'Getting things ready'
               : isJoiningCrew
               ? 'Finding the right crew'
+              : isRouteRestorePending
+              ? 'Opening the same crew view'
               : 'Restoring your session'
           }
           className="min-h-screen"
@@ -1009,7 +1305,7 @@ export default function BeerScoreApp() {
     )
   }
 
-  if (view === 'home' || !activeCrew) {
+  if (view === 'home') {
     return (
       <HomeScreen
         user={session.user}
@@ -1026,6 +1322,18 @@ export default function BeerScoreApp() {
         mutationError={mutationError}
         onDismissError={() => setMutationError(null)}
       />
+    )
+  }
+
+  if (!activeCrew) {
+    return (
+      <main className="min-h-screen bg-background">
+        <LoadingSpinner
+          message="Restoring your tab…"
+          submessage="Opening the same crew view"
+          className="min-h-screen"
+        />
+      </main>
     )
   }
 
@@ -1046,7 +1354,7 @@ export default function BeerScoreApp() {
         onBack={handleBackToHome}
         onLeave={handleLeaveCrew}
         onSignOut={handleSignOut}
-        onOpenProfile={() => setShowProfile(true)}
+        onOpenProfile={handleOpenProfile}
         onMarkNotificationsRead={() => { void handleMarkNotificationsRead() }}
         isSigningOut={isSigningOut}
       />
@@ -1055,6 +1363,10 @@ export default function BeerScoreApp() {
         {activeTab === 'tonight' && activeNightWithMiniGames && (
           <TonightScreen
             night={activeNightWithMiniGames}
+            selectedBetId={selectedBetId}
+            selectedBeerBombMatchId={selectedBeerBombMatchId}
+            onSelectBet={handleSelectBet}
+            onSelectBeerBombMatch={handleSelectBeerBombMatch}
             onWager={handleWager}
             onBeerBombAccept={handleBeerBombAccept}
             onBeerBombDecline={handleBeerBombDecline}
@@ -1074,7 +1386,7 @@ export default function BeerScoreApp() {
                 Start a night to begin creating bets and tracking the drinks ledger.
               </p>
               <button
-                onClick={() => setActiveTab('crew')}
+                onClick={() => handleTabChange('crew')}
                 className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-display font-normal border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all"
               >
                 Start tonight's tab
@@ -1113,7 +1425,7 @@ export default function BeerScoreApp() {
         )}
       </div>
 
-      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onCreateBet={() => setShowCreateBet(true)} />
+      <BottomNav activeTab={activeTab} onTabChange={handleTabChange} onCreateBet={handleOpenCreateBet} />
 
 
       <CreateBetModal
