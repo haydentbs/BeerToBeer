@@ -71,6 +71,7 @@ interface BeerBombMatchModalProps {
 }
 
 const BG_CANDIDATES = [
+  '/mini-games/beer-bomb/background.svg',
   '/mini-games/beer-bomb/background.webp',
   '/mini-games/beer-bomb/background.png',
   '/mini-games/beer-bomb/beer-bomb-background.webp',
@@ -78,6 +79,7 @@ const BG_CANDIDATES = [
 ]
 
 const BEER_IDLE_CANDIDATES = [
+  '/mini-games/beer-bomb/beer-idle.svg',
   '/mini-games/beer-bomb/beer-idle.png',
   '/mini-games/beer-bomb/beer-idle.webp',
   '/mini-games/beer-bomb/beer.png',
@@ -85,12 +87,14 @@ const BEER_IDLE_CANDIDATES = [
 ]
 
 const BEER_DRAINED_CANDIDATES = [
+  '/mini-games/beer-bomb/beer-drained.svg',
   '/mini-games/beer-bomb/beer-drained.png',
   '/mini-games/beer-bomb/beer-empty.png',
   '/mini-games/beer-bomb/beer-drained.webp',
 ]
 
 const BEER_BOMB_CANDIDATES = [
+  '/mini-games/beer-bomb/beer-bomb.svg',
   '/mini-games/beer-bomb/beer-bomb.png',
   '/mini-games/beer-bomb/beer-bomb-hit.png',
   '/mini-games/beer-bomb/bomb.png',

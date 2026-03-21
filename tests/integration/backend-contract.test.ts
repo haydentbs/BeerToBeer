@@ -294,7 +294,6 @@ describe('persistent backend contract', () => {
       type: 'h2h',
       title: 'Pool race',
       options: [{ label: 'Creator wins' }, { label: 'Invite Rival wins' }],
-      closeTime: 20,
       wager: 2,
       challengerMembershipId: rivalMembership,
     })
@@ -331,7 +330,7 @@ describe('persistent backend contract', () => {
 
     expect(liveBet?.status).toBe('open')
     expect(liveBet?.acceptedAt).toBeTruthy()
-    expect(liveBet?.closesAt).toBeTruthy()
+    expect(liveBet?.closesAt).toBeNull()
     expect(liveBet?.options[0].wagers.some((wager: any) => wager.user.membershipId === creatorMembership && wager.drinks === 2)).toBe(true)
     expect(liveBet?.options[1].wagers.some((wager: any) => wager.user.membershipId === rivalMembership && wager.drinks === 2)).toBe(true)
   }, 30000)
@@ -395,7 +394,8 @@ describe('persistent backend contract', () => {
     state = await loadAppState(creator)
     currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
     const expiredState = currentCrew.currentNight?.bets.find((bet: any) => bet.id === expiringBet!.id)
-    expect(expiredState?.status).toBe('cancelled')
+    expect(expiredState?.status).toBe('declined')
+    expect(expiredState?.declinedAt).toBeTruthy()
     expect(expiredState?.voidReason).toMatch(/expired/i)
     expect(expiredState?.options.every((option: any) => option.wagers.length === 0)).toBe(true)
 
@@ -728,7 +728,7 @@ describe('persistent backend contract', () => {
 
     await mutateAppState(challenger, 'castDisputeVote', {
       crewId: crew.id,
-      disputeId: dispute.data!.id,
+      betId: createdBet!.id,
       optionId: noOption!.id,
     })
 

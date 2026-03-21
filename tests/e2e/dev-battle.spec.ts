@@ -20,8 +20,8 @@ test('two dev users can create a sandbox, join the same crew, and exchange a Bee
     await alexPage.goto(baseURL ?? '/')
     await expect(alexPage.getByRole('button', { name: 'Continue as Alex Dev' })).toBeVisible()
     await alexPage.getByRole('button', { name: 'Continue as Alex Dev' }).click()
-    await expect(alexPage.getByRole('button', { name: 'Create Battle Sandbox' })).toBeVisible()
-    await alexPage.getByRole('button', { name: 'Create Battle Sandbox' }).click()
+    await expect(alexPage.getByRole('button', { name: /Create Battle Sandbox/i })).toBeVisible()
+    await alexPage.getByRole('button', { name: /Create Battle Sandbox/i }).click()
     await expect(alexPage.getByTestId('crew-invite-code')).toBeVisible()
 
     const inviteCode = (await alexPage.getByTestId('crew-invite-code').textContent())?.trim()

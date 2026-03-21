@@ -19,7 +19,7 @@ interface CreateBetModalProps {
     challenger?: { id: string }
     wager?: number
     initialOptionIndex?: number
-    closeTime: number
+    closeTime?: number
   }) => void
   onCreateMiniGame: (challenge: {
     title: string
@@ -100,7 +100,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
       challenger: challenger ? { id: challenger } : undefined,
       wager,
       initialOptionIndex: mode === 'h2h' ? 0 : initialOptionIndex,
-      closeTime,
+      ...(mode === 'prop' ? { closeTime } : {}),
     }
 
     onCreate(bet)

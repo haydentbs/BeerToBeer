@@ -89,9 +89,18 @@ function getBetStatusDisplay(bet: Bet, userOutcome: BetMemberOutcome | null) {
         }
       }
       // Normal open bet with timer
-      const leadingOption = bet.options.reduce((a, b) => a.totalDrinks > b.totalDrinks ? a : b)
+      const leadingOption = bet.options.reduce<Bet['options'][number] | null>(
+        (leader, option) => {
+          if (!leader) {
+            return option
+          }
+
+          return leader.totalDrinks > option.totalDrinks ? leader : option
+        },
+        null
+      )
       return {
-        detailLabel: leadingOption.label,
+        detailLabel: leadingOption?.label ?? 'Awaiting wagers',
         detailValue: null,
         detailColor: 'text-primary',
         badge: null, // timer shown instead

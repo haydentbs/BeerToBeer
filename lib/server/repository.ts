@@ -2081,15 +2081,16 @@ async function processBetExpirationsForCrews(crewIds: string[]) {
       continue
     }
 
+    const declinedAt = new Date().toISOString()
     await supabase
       .from('bets')
       .update({
-        status: 'cancelled',
+        status: 'declined',
         closes_at: null,
         respond_by_at: null,
         accepted_at: null,
-        declined_at: null,
-        resolved_at: new Date().toISOString(),
+        declined_at: declinedAt,
+        resolved_at: declinedAt,
         void_reason: 'Bet invite expired before it was accepted.',
       })
       .eq('id', bet.id)
@@ -2099,7 +2100,7 @@ async function processBetExpirationsForCrews(crewIds: string[]) {
       bet_id: bet.id,
       actor_membership_id: bet.created_by_membership_id,
       from_status: 'pending_accept',
-      to_status: 'cancelled',
+      to_status: 'declined',
       note: 'Bet invite expired before it was accepted.',
       metadata: { source: 'timeout' },
     })
@@ -2110,7 +2111,7 @@ async function processBetExpirationsForCrews(crewIds: string[]) {
       message: 'Your 1v1 bet invite expired before the other player responded.',
       payload: {
         betId: bet.id,
-        status: 'cancelled',
+        status: 'declined',
         reason: 'expired',
       },
       membershipIds: bet.created_by_membership_id ? [bet.created_by_membership_id] : undefined,
@@ -2168,6 +2169,18 @@ async function processBetExpirationsForCrews(crewIds: string[]) {
 
     await finalizeDispute(dispute.id, dispute.opened_by_membership_id)
   }
+}
+
+async function findOpenDisputeForBet(supabase: ReturnType<typeof getServiceRoleClient>, betId: string) {
+  const { data: dispute, error } = await supabase
+    .from('disputes')
+    .select('id, bet_id, status, expires_at')
+    .eq('bet_id', betId)
+    .eq('status', 'open')
+    .maybeSingle()
+
+  if (error) throw error
+  return dispute
 }
 
 export async function mutateAppState(actor: RequestActor, action: string, payload: Record<string, any>): Promise<AppMutationPayload> {
@@ -2589,8 +2602,8 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
     case 'createBet': {
       const actorMembership = await requireActorMembership(actor, payload.crewId)
-      const closeTime = Number(payload.closeTime)
-      if (!Number.isFinite(closeTime) || closeTime <= 0) {
+      const closeTime = payload.closeTime == null ? null : Number(payload.closeTime)
+      if (payload.type !== 'h2h' && (!Number.isFinite(closeTime) || (closeTime ?? 0) <= 0)) {
         throw new Error('Bet close time must be greater than zero.')
       }
 
@@ -2672,12 +2685,12 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
           status: payload.type === 'h2h' ? 'pending_accept' : 'open',
           created_by_membership_id: actorMembership.id,
           challenger_membership_id: payload.challengerMembershipId ?? null,
-          closes_at: payload.type === 'h2h' ? null : new Date(Date.now() + closeTime * 60_000).toISOString(),
+          closes_at: payload.type === 'h2h' ? null : new Date(Date.now() + (closeTime ?? 0) * 60_000).toISOString(),
           challenge_wager: h2hStake,
           respond_by_at: payload.type === 'h2h'
             ? new Date(Date.now() + H2H_RESPONSE_WINDOW_MINUTES * 60_000).toISOString()
             : null,
-          close_after_accept_minutes: payload.type === 'h2h' ? closeTime : null,
+          close_after_accept_minutes: payload.type === 'h2h' ? null : closeTime,
         })
         .select('id, title')
         .single()
@@ -2866,8 +2879,6 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       }
 
       const acceptedAt = new Date().toISOString()
-      const closeAfterAcceptMinutes = Number(bet.close_after_accept_minutes ?? 2)
-      const closesAt = new Date(Date.now() + closeAfterAcceptMinutes * 60_000).toISOString()
 
       await supabase.from('wagers').upsert([
         {
@@ -2888,7 +2899,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
         .from('bets')
         .update({
           status: 'open',
-          closes_at: closesAt,
+          closes_at: null,
           respond_by_at: null,
           accepted_at: acceptedAt,
           declined_at: null,
@@ -3162,18 +3173,29 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
     case 'castDisputeVote': {
       const actorMembership = await requireActorMembership(actor, payload.crewId)
-      const { data: dispute, error: disputeError } = await supabase
-        .from('disputes')
-        .select('id, bet_id, status, expires_at')
-        .eq('id', payload.disputeId)
-        .single()
+      const dispute = payload.disputeId
+        ? await (async () => {
+            const { data, error } = await supabase
+              .from('disputes')
+              .select('id, bet_id, status, expires_at')
+              .eq('id', payload.disputeId)
+              .single()
 
-      if (disputeError) throw disputeError
+            if (error) throw error
+            return data
+          })()
+        : payload.betId
+          ? await findOpenDisputeForBet(supabase, payload.betId)
+          : null
+
+      if (!dispute) {
+        throw new Error('That dispute is no longer open.')
+      }
       if (dispute.status !== 'open') {
         throw new Error('That dispute is no longer open.')
       }
       if (dispute.expires_at && asDate(dispute.expires_at).getTime() <= Date.now()) {
-        await finalizeDispute(payload.disputeId, actorMembership.id)
+        await finalizeDispute(dispute.id, actorMembership.id)
         break
       }
 
@@ -3193,7 +3215,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       }
 
       await supabase.from('dispute_votes').upsert({
-        dispute_id: payload.disputeId,
+        dispute_id: dispute.id,
         membership_id: actorMembership.id,
         option_id: payload.optionId,
         deferred: false,
@@ -3202,12 +3224,12 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       const { data: votes, error: votesError } = await supabase
         .from('dispute_votes')
         .select('membership_id')
-        .eq('dispute_id', payload.disputeId)
+        .eq('dispute_id', dispute.id)
 
       if (votesError) throw votesError
 
       if ((votes ?? []).length >= eligibleMembershipIds.size) {
-        await finalizeDispute(payload.disputeId, actorMembership.id)
+        await finalizeDispute(dispute.id, actorMembership.id)
       }
       break
     }

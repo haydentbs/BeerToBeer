@@ -4,13 +4,14 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3100'
 const useGoogleAuth = process.env.PLAYWRIGHT_USE_GOOGLE_AUTH === '1'
 const useDevAuth = process.env.PLAYWRIGHT_USE_DEV_AUTH === '1'
 const useAppServer = process.env.PLAYWRIGHT_USE_APP_SERVER !== '0'
+const deviceProfile = process.env.PLAYWRIGHT_MOBILE === '1' ? devices['iPhone 13'] : devices['Desktop Chrome']
 
 const projects: any[] = [
   {
     name: 'guest',
     testMatch: /guest-flow\.spec\.ts/,
     use: {
-      ...devices['Desktop Chrome'],
+      ...deviceProfile,
     },
   },
 ]
@@ -21,14 +22,14 @@ if (useGoogleAuth) {
       name: 'setup',
       testMatch: /auth\.setup\.ts/,
       use: {
-        ...devices['Desktop Chrome'],
+        ...deviceProfile,
       },
     },
     {
       name: 'authenticated',
       testIgnore: /auth\.setup\.ts/,
       use: {
-        ...devices['Desktop Chrome'],
+        ...deviceProfile,
         storageState: 'tests/e2e/.auth/google-state.json',
       },
       dependencies: ['setup'],
@@ -41,7 +42,7 @@ if (useDevAuth) {
     name: 'dev-auth',
     testMatch: /dev-battle\.spec\.ts/,
     use: {
-      ...devices['Desktop Chrome'],
+      ...deviceProfile,
     },
   })
 }

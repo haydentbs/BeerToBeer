@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X, Clock, Users, Swords, HelpCircle, AlertTriangle, CheckCircle, Vote } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Bet } from '@/lib/store'
@@ -43,6 +43,21 @@ export function BetDetailModal({
   const [wagerAmount, setWagerAmount] = useState(1)
   const [isReportingResult, setIsReportingResult] = useState(false)
   const [hasVoted, setHasVoted] = useState(false)
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedOption(null)
+      setWagerAmount(1)
+      setIsReportingResult(false)
+      setHasVoted(false)
+      return
+    }
+
+    setSelectedOption(null)
+    setWagerAmount(1)
+    setIsReportingResult(false)
+    setHasVoted(false)
+  }, [bet?.id, isOpen])
 
   // Pending result confirmation timer (60s from pendingResultAt)
   const confirmDeadline = bet?.pendingResultAt ? new Date(bet.pendingResultAt.getTime() + CONFIRM_WINDOW_MS) : null

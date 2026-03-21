@@ -230,7 +230,7 @@ interface CreateBetInput {
   challenger?: { id: string } | undefined
   wager?: number
   initialOptionIndex?: number
-  closeTime: number
+  closeTime?: number
 }
 
 interface CreateMiniGameInput {
@@ -1345,10 +1345,10 @@ export default function BeerScoreApp() {
         title: betInput.title,
         options: betInput.options,
         line: betInput.line,
-        closeTime: betInput.closeTime,
         wager: betInput.wager ?? 0,
         initialOptionIndex: betInput.initialOptionIndex ?? 0,
         challengerMembershipId,
+        ...(betInput.closeTime != null ? { closeTime: betInput.closeTime } : {}),
       })
       applyAppPayload(payload)
     })
@@ -1511,8 +1511,8 @@ export default function BeerScoreApp() {
     return (
       <main className="min-h-screen bg-background">
         <LoadingSpinner
-          message={loadingCopy?.message ?? (isRouteRestorePending ? 'Restoring your tab…' : 'Checking your tab…')}
-          submessage={loadingCopy?.submessage ?? (isRouteRestorePending ? 'Opening the same crew view' : 'Restoring your session')}
+          message={loadingCopy?.message ?? 'Checking your tab…'}
+          submessage={loadingCopy?.submessage ?? 'Restoring your session'}
           className="min-h-screen"
         />
       </main>
