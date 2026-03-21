@@ -21,6 +21,36 @@ export interface AnonymousActor {
 
 export type RequestActor = AuthenticatedActor | GuestActor | AnonymousActor
 
+function buildAuthUserFromClaims(claims: Record<string, any>): SupabaseUser | null {
+  if (typeof claims.sub !== 'string' || !claims.sub) {
+    return null
+  }
+
+  const aud =
+    typeof claims.aud === 'string'
+      ? claims.aud
+      : Array.isArray(claims.aud) && typeof claims.aud[0] === 'string'
+      ? claims.aud[0]
+      : 'authenticated'
+
+  return {
+    id: claims.sub,
+    aud,
+    role: typeof claims.role === 'string' ? claims.role : 'authenticated',
+    email: typeof claims.email === 'string' ? claims.email : undefined,
+    app_metadata:
+      claims.app_metadata && typeof claims.app_metadata === 'object' && !Array.isArray(claims.app_metadata)
+        ? claims.app_metadata
+        : {},
+    user_metadata:
+      claims.user_metadata && typeof claims.user_metadata === 'object' && !Array.isArray(claims.user_metadata)
+        ? claims.user_metadata
+        : {},
+    identities: [],
+    created_at: typeof claims.created_at === 'string' ? claims.created_at : new Date(0).toISOString(),
+  } as unknown as SupabaseUser
+}
+
 export async function resolveRequestActor(request: NextRequest): Promise<RequestActor> {
   const authHeader = request.headers.get('authorization')
 
@@ -29,9 +59,8 @@ export async function resolveRequestActor(request: NextRequest): Promise<Request
 
     if (accessToken) {
       const supabase = getServiceRoleClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser(accessToken)
+      const { data } = await supabase.auth.getClaims(accessToken)
+      const user = data?.claims ? buildAuthUserFromClaims(data.claims as Record<string, any>) : null
 
       if (user) {
         return {

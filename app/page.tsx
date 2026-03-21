@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { startTransition, useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { OnboardingScreen } from '@/components/onboarding-screen'
 import { HomeScreen } from '@/components/home-screen'
@@ -270,6 +270,7 @@ export default function BeerScoreApp() {
   const [mutationError, setMutationError] = useState<string | null>(null)
   const [claimingGuestMembershipId, setClaimingGuestMembershipId] = useState<string | null>(null)
   const [authNotice, setAuthNotice] = useState<string | null>(null)
+  const isCrewPollInFlightRef = useRef(false)
   const supabaseConfigured = isSupabaseConfigured()
   const supabaseConfigError = getSupabaseConfigError()
   const devAuthEnabled = isDevAuthEnabled()
@@ -646,51 +647,118 @@ export default function BeerScoreApp() {
   }, [applyAppPayload, sessionLoadKey])
 
   const activeCrew = visibleCrews.find((crew) => crew.id === activeCrewId)
+  const hasActiveNight = Boolean(activeCrew?.currentNight)
   const hasLiveMiniGameMatch = Boolean(
     activeCrew?.currentNight?.miniGameMatches.some((match) => match.status === 'pending' || match.status === 'active')
   )
 
   useEffect(() => {
-    if (!session || view !== 'crew' || !activeCrewId) {
+    if (!session || view !== 'crew' || !activeCrewId || !isDataReady || isRouteRestorePending) {
       return
     }
 
     let cancelled = false
-    let intervalId: ReturnType<typeof setInterval> | null = null
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+    const intervalMs =
+      activeTab === 'tonight' && hasLiveMiniGameMatch
+        ? 2500
+        : hasActiveNight
+        ? 8000
+        : 15000
+
+    const scheduleNextPoll = (delay: number) => {
+      if (cancelled) {
+        return
+      }
+
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+
+      timeoutId = setTimeout(() => {
+        void poll()
+      }, delay)
+    }
 
     const poll = async () => {
+      if (cancelled) {
+        return
+      }
+
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        scheduleNextPoll(15000)
+        return
+      }
+
+      if (isCrewPollInFlightRef.current) {
+        scheduleNextPoll(intervalMs)
+        return
+      }
+
+      isCrewPollInFlightRef.current = true
+
       try {
         const payload = await fetchBootstrapState({
           mode: 'crew',
           activeCrewId,
         })
         if (!cancelled) {
-          applyAppPayload(payload)
+          startTransition(() => {
+            applyAppPayload(payload)
+          })
         }
       } catch {
         // Best-effort polling only; local Beer Bomb state stays live even if the refresh fails.
+      } finally {
+        isCrewPollInFlightRef.current = false
+        scheduleNextPoll(intervalMs)
       }
     }
 
-    const intervalMs =
-      view === 'crew' && activeTab === 'tonight' && hasLiveMiniGameMatch
-        ? 2500
-        : view === 'crew' && activeCrew?.currentNight
-        ? 4000
-        : 8000
+    const handleVisibilityChange = () => {
+      if (cancelled || typeof document === 'undefined' || document.visibilityState !== 'visible') {
+        return
+      }
 
-    intervalId = setInterval(() => {
-      void poll()
-    }, intervalMs)
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+
+      if (!isCrewPollInFlightRef.current) {
+        void poll()
+      }
+    }
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+    }
+
     void poll()
 
     return () => {
       cancelled = true
-      if (intervalId) {
-        clearInterval(intervalId)
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
       }
     }
-  }, [activeCrew?.currentNight, activeCrewId, activeTab, applyAppPayload, hasLiveMiniGameMatch, session, view])
+  }, [
+    activeCrew?.currentNight?.id,
+    activeCrew?.currentNight?.status,
+    activeCrewId,
+    activeTab,
+    applyAppPayload,
+    hasActiveNight,
+    hasLiveMiniGameMatch,
+    isDataReady,
+    isRouteRestorePending,
+    session,
+    view,
+  ])
 
   useEffect(() => {
     if (!session || session.isGuest || !getPendingGuestClaimFlag()) {
