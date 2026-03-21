@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Bomb } from 'lucide-react'
+import { Bomb, Clock3, Swords } from 'lucide-react'
 import { BetCardCompact } from './bet-card-compact'
 import { BetDetailModal } from './bet-detail-modal'
 import {
@@ -10,7 +10,7 @@ import {
   type BeerBombMatch,
 } from './beer-bomb-match-modal'
 import { useTheme } from './theme-provider'
-import type { Bet, Night } from '@/lib/store'
+import { formatDrinks, getTimeRemainingOrLabel, type Bet, type Night } from '@/lib/store'
 import { useCurrentUser } from '@/lib/current-user'
 
 const DEV_SOLO_BEER_BOMB_ENABLED = process.env.NODE_ENV !== 'production'
@@ -61,6 +61,8 @@ interface TonightScreenProps {
   onSelectBet: (betId: string | null) => void
   onSelectBeerBombMatch: (matchId: string | null) => void
   onWager: (betId: string, optionId: string, drinks: number) => void
+  onBetOfferAccept: (betId: string) => Promise<void> | void
+  onBetOfferDecline: (betId: string) => Promise<void> | void
   onBeerBombAccept: (matchId: string) => Promise<void> | void
   onBeerBombDecline: (matchId: string) => Promise<void> | void
   onBeerBombCancel: (matchId: string) => Promise<void> | void
@@ -74,6 +76,8 @@ export function TonightScreen({
   onSelectBet,
   onSelectBeerBombMatch,
   onWager,
+  onBetOfferAccept,
+  onBetOfferDecline,
   onBeerBombAccept,
   onBeerBombDecline,
   onBeerBombCancel,
@@ -82,11 +86,21 @@ export function TonightScreen({
   const currentUser = useCurrentUser()
   const [devSoloBeerBombMatch, setDevSoloBeerBombMatch] = useState<BeerBombMatch | null>(null)
   const { drinkEmoji } = useTheme()
+  const currentMembershipId = currentUser.membershipId ?? currentUser.id
 
   const miniGameMatches = (night.miniGameMatches ?? []) as unknown as BeerBombMatch[]
   const betsById = new Map(night.bets.map((bet) => [bet.id, bet]))
   const activeBets = night.bets.filter((bet) => ['open', 'pending_result', 'disputed'].includes(bet.status))
-  const resolvedBets = night.bets.filter((bet) => ['resolved', 'void', 'cancelled'].includes(bet.status))
+  const resolvedBets = night.bets.filter((bet) => ['resolved', 'void', 'cancelled', 'declined'].includes(bet.status))
+  const actionableBetOffers = night.bets
+    .filter((bet) => bet.type === 'h2h' && bet.status === 'pending_accept' && bet.challenger?.membershipId === currentMembershipId)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+  const sentBetOffers = night.bets
+    .filter((bet) => bet.type === 'h2h' && bet.status === 'pending_accept' && bet.creator.membershipId === currentMembershipId)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+  const actionableMiniGameMatches = miniGameMatches
+    .filter((match) => match.status === 'pending' && match.opponent.membershipId === currentMembershipId)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
   const totalPool = night.bets.reduce((acc, bet) => acc + bet.totalPool, 0)
   const liveSelectedBet = selectedBetId ? betsById.get(selectedBetId) ?? null : null
   const liveSelectedBeerBombMatch = devSoloBeerBombMatch?.id === selectedBeerBombMatchId
@@ -129,6 +143,86 @@ export function TonightScreen({
   return (
     <>
       <div className="space-y-5 px-4 pb-24">
+        {(actionableBetOffers.length > 0 || actionableMiniGameMatches.length > 0) && (
+          <section className="space-y-3">
+            {actionableBetOffers.map((bet) => (
+              <div key={bet.id} className="rounded-2xl border-2 border-primary/40 bg-primary/10 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.24em] text-primary">
+                      <Swords className="h-3.5 w-3.5" />
+                      Bet offer
+                    </p>
+                    <h2 className="mt-2 text-lg font-black text-card-foreground">{bet.title}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {bet.creator.name} wants to go head-to-head for {formatDrinks(bet.challengeWager ?? 0)} drinks.
+                    </p>
+                  </div>
+                  <div className="rounded-full border border-primary/30 bg-background/70 px-3 py-1 text-xs font-semibold text-card-foreground">
+                    {formatDrinks(bet.challengeWager ?? 0)}
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                  <Clock3 className="h-3.5 w-3.5 text-primary" />
+                  <span>{getTimeRemainingOrLabel(bet.respondByAt, 'Waiting')}</span>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={() => onBetOfferAccept(bet.id)}
+                    className="flex-1 rounded-xl border-2 border-border bg-primary px-4 py-3 text-sm font-bold text-primary-foreground transition-all active:translate-y-[1px]"
+                  >
+                    Accept & place {formatDrinks(bet.challengeWager ?? 0)}
+                  </button>
+                  <button
+                    onClick={() => onBetOfferDecline(bet.id)}
+                    className="rounded-xl border-2 border-border bg-card px-4 py-3 text-sm font-bold text-card-foreground transition-colors hover:bg-surface"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {actionableMiniGameMatches.map((match) => (
+              <div key={match.id} className="rounded-2xl border-2 border-primary/40 bg-card p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.24em] text-primary">
+                      <Bomb className="h-3.5 w-3.5" />
+                      Beer Bomb challenge
+                    </p>
+                    <h2 className="mt-2 text-lg font-black text-card-foreground">{match.title}</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {match.challenger.name} challenged you for {formatDrinks(match.proposedWager)} drinks.
+                    </p>
+                  </div>
+                  <div className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                    {formatDrinks(match.proposedWager)}
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                  <Clock3 className="h-3.5 w-3.5 text-primary" />
+                  <span>{getTimeRemainingOrLabel(match.respondByAt, 'Waiting')}</span>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={() => onBeerBombAccept(match.id)}
+                    className="flex-1 rounded-xl border-2 border-border bg-primary px-4 py-3 text-sm font-bold text-primary-foreground transition-all active:translate-y-[1px]"
+                  >
+                    Accept & play for {formatDrinks(match.proposedWager)}
+                  </button>
+                  <button
+                    onClick={() => onBeerBombDecline(match.id)}
+                    className="rounded-xl border-2 border-border bg-card px-4 py-3 text-sm font-bold text-card-foreground transition-colors hover:bg-surface"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
+
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-xl border-2 border-border bg-card p-3 text-center">
             <div className="text-2xl font-bold text-primary">{activeBets.length}</div>
@@ -178,6 +272,37 @@ export function TonightScreen({
           </section>
         )}
 
+        {sentBetOffers.length > 0 && (
+          <section>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-bold uppercase tracking-wide text-foreground">Waiting On Response</h2>
+              <span className="text-xs text-muted-foreground">{sentBetOffers.length} pending</span>
+            </div>
+            <div className="space-y-2">
+              {sentBetOffers.map((bet) => (
+                <button
+                  key={bet.id}
+                  onClick={() => onSelectBet(bet.id)}
+                  className="w-full rounded-xl border-2 border-border bg-card p-4 text-left transition-all active:scale-[0.99]"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-card-foreground">{bet.title}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Waiting for {bet.challenger?.name ?? 'your opponent'} to accept {formatDrinks(bet.challengeWager ?? 0)} drinks.
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-primary">Pending</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{getTimeRemainingOrLabel(bet.respondByAt, 'Waiting')}</p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         {activeBets.length > 0 && (
           <section>
             <div className="mb-3 flex items-center justify-between">
@@ -206,7 +331,11 @@ export function TonightScreen({
           </section>
         )}
 
-        {activeBets.length === 0 && resolvedBets.length === 0 && miniGameMatches.length === 0 && (
+        {activeBets.length === 0 &&
+          resolvedBets.length === 0 &&
+          miniGameMatches.length === 0 &&
+          actionableBetOffers.length === 0 &&
+          sentBetOffers.length === 0 && (
           <div className="py-12 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border-2 border-border bg-surface">
               <span className="text-2xl">{drinkEmoji}</span>

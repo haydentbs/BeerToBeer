@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Clock, Swords, HelpCircle, ChevronRight, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Bet } from '@/lib/store'
-import { formatDrinks, getMemberOutcomeForBet, getTimeRemaining } from '@/lib/store'
+import { formatDrinks, getMemberOutcomeForBet, getTimeRemainingOrLabel } from '@/lib/store'
 import { useCurrentUser } from '@/lib/current-user'
 
 interface BetCardCompactProps {
@@ -18,10 +18,10 @@ export function BetCardCompact({ bet, onTap }: BetCardCompactProps) {
 
   useEffect(() => {
     // Set initial value on client only to avoid hydration mismatch
-    setTimeRemaining(getTimeRemaining(bet.closesAt))
+    setTimeRemaining(getTimeRemainingOrLabel(bet.closesAt))
     
     const interval = setInterval(() => {
-      setTimeRemaining(getTimeRemaining(bet.closesAt))
+      setTimeRemaining(getTimeRemainingOrLabel(bet.closesAt))
     }, 1000)
     return () => clearInterval(interval)
   }, [bet.closesAt])
@@ -31,9 +31,11 @@ export function BetCardCompact({ bet, onTap }: BetCardCompactProps) {
   )
   
   const isResolved = bet.status === 'resolved'
+  const isPendingAccept = bet.status === 'pending_accept'
   const isPendingResult = bet.status === 'pending_result'
   const isDisputed = bet.status === 'disputed'
   const isVoid = bet.status === 'void' || bet.status === 'cancelled'
+  const isDeclined = bet.status === 'declined'
   const userOutcome = getMemberOutcomeForBet(bet, currentUser.id)
 
   return (
@@ -59,14 +61,16 @@ export function BetCardCompact({ bet, onTap }: BetCardCompactProps) {
       <div className="flex-1 min-w-0">
         <h3 className="font-bold text-card-foreground text-sm truncate">{bet.title}</h3>
         <div className="flex items-center gap-2 mt-0.5">
-          {(isResolved || isVoid) ? (
+          {(isResolved || isVoid || isDeclined) ? (
             <>
               <span className="text-xs text-muted-foreground">
-                {isVoid
+                {isDeclined
+                  ? 'Declined'
+                  : isVoid
                   ? 'Void'
                   : `You ${((userOutcome?.netResult ?? 0) >= 0) ? 'net' : 'lost'}`}
               </span>
-              {!isVoid && (
+              {!isVoid && !isDeclined && (
                 <>
                   <span className="text-xs text-muted-foreground">·</span>
                   <span className={cn(
@@ -90,7 +94,7 @@ export function BetCardCompact({ bet, onTap }: BetCardCompactProps) {
               </span>
             </>
           )}
-          {!isResolved && !isVoid && !isPendingResult && !isDisputed && (
+          {!isResolved && !isVoid && !isDeclined && !isPendingAccept && !isPendingResult && !isDisputed && (
             <>
               <span className="text-xs text-muted-foreground">·</span>
               <span className="text-xs font-semibold text-primary">
@@ -110,15 +114,23 @@ export function BetCardCompact({ bet, onTap }: BetCardCompactProps) {
               <span className="text-xs font-semibold text-loss">Under dispute</span>
             </>
           )}
+          {isPendingAccept && (
+            <>
+              <span className="text-xs text-muted-foreground">·</span>
+              <span className="text-xs font-semibold text-primary">Awaiting response</span>
+            </>
+          )}
         </div>
       </div>
 
       {/* Timer / Status */}
       <div className="shrink-0 flex items-center gap-2">
-        {isResolved || isVoid ? (
-          <span className={cn('text-xs font-semibold uppercase', isVoid ? 'text-muted-foreground' : 'text-win')}>
-            {isVoid ? 'Void' : 'Settled'}
+        {isResolved || isVoid || isDeclined ? (
+          <span className={cn('text-xs font-semibold uppercase', isVoid || isDeclined ? 'text-muted-foreground' : 'text-win')}>
+            {isDeclined ? 'Declined' : isVoid ? 'Void' : 'Settled'}
           </span>
+        ) : isPendingAccept ? (
+          <span className="text-xs font-semibold uppercase text-primary">Invite</span>
         ) : isPendingResult ? (
           <span className="text-xs font-semibold uppercase text-primary">Pending</span>
         ) : isDisputed ? (

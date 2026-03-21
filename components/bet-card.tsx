@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Clock, Users, Swords, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Bet } from '@/lib/store'
-import { formatDrinks, getTimeRemaining } from '@/lib/store'
+import { formatDrinks, getTimeRemainingOrLabel } from '@/lib/store'
 
 interface BetCardProps {
   bet: Bet
@@ -12,13 +12,13 @@ interface BetCardProps {
 }
 
 export function BetCard({ bet, onWager }: BetCardProps) {
-  const [timeRemaining, setTimeRemaining] = useState(getTimeRemaining(bet.closesAt))
+  const [timeRemaining, setTimeRemaining] = useState(getTimeRemainingOrLabel(bet.closesAt))
   const [selectedOption, setSelectedOption] = useState<string | null>(null)
   const [wagerAmount, setWagerAmount] = useState(1)
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setTimeRemaining(getTimeRemaining(bet.closesAt))
+      setTimeRemaining(getTimeRemainingOrLabel(bet.closesAt))
     }, 1000)
     return () => clearInterval(interval)
   }, [bet.closesAt])

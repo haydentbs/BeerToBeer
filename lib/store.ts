@@ -11,6 +11,7 @@ export interface User {
 
 export type CrewRole = 'creator' | 'admin' | 'member' | 'guest'
 export type BetSubtype = 'yesno' | 'overunder' | 'multi' | null
+export type BetStatus = 'pending_accept' | 'open' | 'pending_result' | 'disputed' | 'resolved' | 'void' | 'cancelled' | 'declined'
 
 export interface Bet {
   id: string
@@ -21,9 +22,13 @@ export interface Bet {
   line?: number
   creator: User
   challenger?: User
-  status: 'open' | 'pending_result' | 'disputed' | 'resolved' | 'void' | 'cancelled'
-  closesAt: Date
+  status: BetStatus
+  closesAt?: Date | null
   createdAt: Date
+  challengeWager?: number
+  respondByAt?: Date
+  acceptedAt?: Date
+  declinedAt?: Date
   options: BetOption[]
   totalPool: number
   result?: string
@@ -81,6 +86,10 @@ export interface MiniGameMatch {
   revealedSlots: number[]
   createdAt: Date
   updatedAt: Date
+  respondByAt?: Date
+  acceptedAt?: Date
+  declinedAt?: Date
+  cancelledAt?: Date
   startingPlayer?: User
   currentTurn?: User
   winner?: User
@@ -871,7 +880,6 @@ export function formatDrinks(drinks: number): string {
 export function getTimeRemaining(date: Date): string {
   const diff = date.getTime() - Date.now()
   if (diff <= 0) return 'Closed'
-
   const minutes = Math.floor(diff / (1000 * 60))
   const seconds = Math.floor((diff % (1000 * 60)) / 1000)
 
@@ -885,6 +893,70 @@ export function getTimeRemaining(date: Date): string {
   }
 
   return `${seconds}s`
+}
+
+export function getTimeRemainingOrLabel(date?: Date | null, fallback = 'Waiting'): string {
+  if (!date) {
+    return fallback
+  }
+
+  return getTimeRemaining(date)
+}
+
+export interface NotificationPayload {
+  betId?: string
+  matchId?: string
+  nightId?: string
+  status?: string
+  challengeWager?: number
+  proposedWager?: number
+  agreedWager?: number
+  pendingResultOptionId?: string | null
+  winningOptionId?: string | null
+  createdByMembershipId?: string
+  challengerMembershipId?: string
+  opponentMembershipId?: string
+  targetMembershipId?: string
+  gameKey?: string
+  [key: string]: string | number | boolean | null | undefined
+}
+
+export interface Notification {
+  id: string
+  type:
+    | 'bet_created'
+    | 'bet_resolved'
+    | 'challenge'
+    | 'crew_invite'
+    | 'night_started'
+    | 'night_closed'
+    | 'settlement_requested'
+    | 'settlement_confirmed'
+    | 'role_updated'
+    | 'guest_joined'
+    | 'member_joined'
+  title: string
+  message: string
+  crewName: string
+  timestamp: Date
+  read: boolean
+  payload: NotificationPayload
+}
+
+export function getNotificationTargetId(notification: Pick<Notification, 'payload'>) {
+  return notification.payload.matchId ?? notification.payload.betId ?? notification.payload.nightId ?? null
+}
+
+export function getNotificationActionLabel(notification: Pick<Notification, 'type' | 'payload'>) {
+  if (notification.payload.matchId) {
+    return 'Open challenge'
+  }
+
+  if (notification.payload.betId) {
+    return 'Open bet'
+  }
+
+  return notification.type === 'night_started' ? 'View night' : 'Open'
 }
 
 export function getNetPosition(userId: string, ledger: LedgerEntry[]): number {
@@ -913,33 +985,11 @@ export function generateCrewCode(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase()
 }
 
-// Notifications
-export interface Notification {
-  id: string
-  type:
-    | 'bet_created'
-    | 'bet_resolved'
-    | 'challenge'
-    | 'crew_invite'
-    | 'night_started'
-    | 'night_closed'
-    | 'settlement_requested'
-    | 'settlement_confirmed'
-    | 'role_updated'
-    | 'guest_joined'
-    | 'member_joined'
-  title: string
-  message: string
-  crewName: string
-  timestamp: Date
-  read: boolean
-}
-
 export const mockNotifications: Notification[] = [
-  { id: 'n1', type: 'bet_resolved', title: 'Darts showdown settled', message: 'Sarah won! You earned 1.5 drinks', crewName: 'The Usual Suspects', timestamp: new Date(Date.now() - 1000 * 60 * 5), read: false },
-  { id: 'n2', type: 'challenge', title: 'Jake challenged you!', message: 'Pool match - 2 drinks on the line', crewName: 'The Usual Suspects', timestamp: new Date(Date.now() - 1000 * 60 * 15), read: false },
-  { id: 'n3', type: 'night_started', title: 'Night started!', message: "Friday at O'Malley's is live", crewName: 'The Usual Suspects', timestamp: new Date(Date.now() - 1000 * 60 * 90), read: true },
-  { id: 'n4', type: 'bet_created', title: 'New bet created', message: 'Will Dave mention his ex?', crewName: 'The Usual Suspects', timestamp: new Date(Date.now() - 1000 * 60 * 20), read: true },
+  { id: 'n1', type: 'bet_resolved', title: 'Darts showdown settled', message: 'Sarah won! You earned 1.5 drinks', crewName: 'The Usual Suspects', timestamp: new Date(Date.now() - 1000 * 60 * 5), read: false, payload: { betId: 'bet-1' } },
+  { id: 'n2', type: 'challenge', title: 'Jake challenged you!', message: 'Pool match - 2 drinks on the line', crewName: 'The Usual Suspects', timestamp: new Date(Date.now() - 1000 * 60 * 15), read: false, payload: { matchId: 'match-1', proposedWager: 2 } },
+  { id: 'n3', type: 'night_started', title: 'Night started!', message: "Friday at O'Malley's is live", crewName: 'The Usual Suspects', timestamp: new Date(Date.now() - 1000 * 60 * 90), read: true, payload: { nightId: 'night-1' } },
+  { id: 'n4', type: 'bet_created', title: 'New bet created', message: 'Will Dave mention his ex?', crewName: 'The Usual Suspects', timestamp: new Date(Date.now() - 1000 * 60 * 20), read: true, payload: { betId: 'bet-2' } },
 ]
 
 export function formatRelativeTime(date: Date): string {

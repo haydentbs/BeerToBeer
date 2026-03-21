@@ -9,7 +9,10 @@ function reviveBet(bet: any): Bet {
   return {
     ...bet,
     createdAt: new Date(bet.createdAt),
-    closesAt: new Date(bet.closesAt),
+    closesAt: bet.closesAt ? new Date(bet.closesAt) : null,
+    respondByAt: bet.respondByAt ? new Date(bet.respondByAt) : undefined,
+    acceptedAt: bet.acceptedAt ? new Date(bet.acceptedAt) : undefined,
+    declinedAt: bet.declinedAt ? new Date(bet.declinedAt) : undefined,
     pendingResultAt: bet.pendingResultAt ? new Date(bet.pendingResultAt) : undefined,
     options: (bet.options ?? []).map((option: any) => ({
       ...option,
@@ -34,7 +37,10 @@ function reviveCrew(crew: any): Crew {
             betId: match.betId ?? undefined,
             createdAt: new Date(match.createdAt),
             updatedAt: new Date(match.updatedAt),
+            respondByAt: match.respondByAt ? new Date(match.respondByAt) : undefined,
             acceptedAt: match.acceptedAt ? new Date(match.acceptedAt) : null,
+            declinedAt: match.declinedAt ? new Date(match.declinedAt) : null,
+            cancelledAt: match.cancelledAt ? new Date(match.cancelledAt) : null,
             completedAt: match.completedAt ? new Date(match.completedAt) : null,
             revealedSlotIndices: match.revealedSlotIndices ?? match.revealedSlots ?? [],
             currentTurnMembershipId: match.currentTurnMembershipId ?? match.currentTurn?.membershipId ?? null,
@@ -51,6 +57,7 @@ function reviveNotification(notification: any): Notification {
   return {
     ...notification,
     timestamp: new Date(notification.timestamp),
+    payload: notification.payload ?? {},
   }
 }
 
@@ -140,4 +147,8 @@ export async function takeMiniGameTurn(payload: Record<string, any>) {
 
 export async function cancelMiniGameChallenge(payload: Record<string, any>) {
   return mutateApp('cancelMiniGameChallenge', payload)
+}
+
+export async function respondToBetOffer(payload: Record<string, any>) {
+  return mutateApp('respondToBetOffer', payload)
 }

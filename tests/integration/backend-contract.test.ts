@@ -13,6 +13,15 @@ async function expirePendingResult(betId: string) {
     .eq('id', betId)
 }
 
+async function expirePendingAccept(betId: string) {
+  await getServiceRoleClient()
+    .from('bets')
+    .update({
+      respond_by_at: new Date(Date.now() - 61_000).toISOString(),
+    })
+    .eq('id', betId)
+}
+
 async function getMiniGameMatchRow(matchId: string) {
   const { data, error } = await getServiceRoleClient()
     .from('mini_game_matches')
@@ -266,6 +275,133 @@ describe('persistent backend contract', () => {
     ).rejects.toThrow(/creator or admin permissions/i)
   }, 30000)
 
+  it('creates a pending h2h invite, targets the challenged player, and opens after acceptance', async () => {
+    const { creator, crew, night } = await createCrewWithNight('H2H Invite Flow')
+    const rival = makeAuthenticatedActor('Invite Rival')
+    const spectator = makeAuthenticatedActor('Invite Spectator')
+
+    await mutateAppState(rival, 'joinCrew', { code: crew.inviteCode })
+    await mutateAppState(spectator, 'joinCrew', { code: crew.inviteCode })
+
+    let state = await loadAppState(creator)
+    let currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    const creatorMembership = currentCrew.members.find((member: any) => member.role === 'creator')!.membershipId!
+    const rivalMembership = currentCrew.members.find((member: any) => member.name === 'Invite Rival')!.membershipId!
+
+    await mutateAppState(creator, 'createBet', {
+      crewId: crew.id,
+      nightId: night.id,
+      type: 'h2h',
+      title: 'Pool race',
+      options: [{ label: 'Creator wins' }, { label: 'Invite Rival wins' }],
+      closeTime: 20,
+      wager: 2,
+      challengerMembershipId: rivalMembership,
+    })
+
+    state = await loadAppState(creator)
+    currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    const pendingBet = currentCrew.currentNight?.bets.find((bet: any) => bet.title === 'Pool race')
+
+    expect(pendingBet).toBeTruthy()
+    expect(pendingBet?.status).toBe('pending_accept')
+    expect(pendingBet?.challengeWager).toBe(2)
+    expect(pendingBet?.closesAt).toBeNull()
+    expect(pendingBet?.respondByAt).toBeTruthy()
+    expect(pendingBet?.options.every((option: any) => option.wagers.length === 0)).toBe(true)
+
+    const rivalState = await loadAppState(rival)
+    const inviteNotification = rivalState.notifications.find((notification: any) => notification.payload?.betId === pendingBet!.id)
+    expect(inviteNotification?.type).toBe('bet_created')
+    expect(inviteNotification?.payload?.status).toBe('pending_accept')
+    expect(inviteNotification?.payload?.challengeWager).toBe(2)
+
+    const spectatorState = await loadAppState(spectator)
+    expect(spectatorState.notifications.some((notification: any) => notification.payload?.betId === pendingBet!.id)).toBe(false)
+
+    await mutateAppState(rival, 'respondToBetOffer', {
+      crewId: crew.id,
+      betId: pendingBet!.id,
+      accepted: true,
+    })
+
+    state = await loadAppState(creator)
+    currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    const liveBet = currentCrew.currentNight?.bets.find((bet: any) => bet.id === pendingBet!.id)
+
+    expect(liveBet?.status).toBe('open')
+    expect(liveBet?.acceptedAt).toBeTruthy()
+    expect(liveBet?.closesAt).toBeTruthy()
+    expect(liveBet?.options[0].wagers.some((wager: any) => wager.user.membershipId === creatorMembership && wager.drinks === 2)).toBe(true)
+    expect(liveBet?.options[1].wagers.some((wager: any) => wager.user.membershipId === rivalMembership && wager.drinks === 2)).toBe(true)
+  }, 30000)
+
+  it('declines and expires pending h2h invites without creating wagers', async () => {
+    const { creator, crew, night } = await createCrewWithNight('H2H Invite Decisions')
+    const rival = makeAuthenticatedActor('Decision Rival')
+
+    await mutateAppState(rival, 'joinCrew', { code: crew.inviteCode })
+
+    let state = await loadAppState(creator)
+    let currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    const rivalMembership = currentCrew.members.find((member: any) => member.name === 'Decision Rival')!.membershipId!
+
+    await mutateAppState(creator, 'createBet', {
+      crewId: crew.id,
+      nightId: night.id,
+      type: 'h2h',
+      title: 'Decline this',
+      options: [{ label: 'Creator wins' }, { label: 'Decision Rival wins' }],
+      closeTime: 15,
+      wager: 1.5,
+      challengerMembershipId: rivalMembership,
+    })
+
+    state = await loadAppState(creator)
+    currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    const declinedBet = currentCrew.currentNight?.bets.find((bet: any) => bet.title === 'Decline this')
+
+    await mutateAppState(rival, 'respondToBetOffer', {
+      crewId: crew.id,
+      betId: declinedBet!.id,
+      accepted: false,
+    })
+
+    state = await loadAppState(creator)
+    currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    const declinedState = currentCrew.currentNight?.bets.find((bet: any) => bet.id === declinedBet!.id)
+    expect(declinedState?.status).toBe('declined')
+    expect(declinedState?.declinedAt).toBeTruthy()
+    expect(declinedState?.options.every((option: any) => option.wagers.length === 0)).toBe(true)
+
+    await mutateAppState(creator, 'createBet', {
+      crewId: crew.id,
+      nightId: night.id,
+      type: 'h2h',
+      title: 'Expire this',
+      options: [{ label: 'Creator wins' }, { label: 'Decision Rival wins' }],
+      closeTime: 15,
+      wager: 1,
+      challengerMembershipId: rivalMembership,
+    })
+
+    state = await loadAppState(creator)
+    currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    const expiringBet = currentCrew.currentNight?.bets.find((bet: any) => bet.title === 'Expire this')
+    expect(expiringBet?.status).toBe('pending_accept')
+
+    await expirePendingAccept(expiringBet!.id)
+
+    state = await loadAppState(creator)
+    currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    const expiredState = currentCrew.currentNight?.bets.find((bet: any) => bet.id === expiringBet!.id)
+    expect(expiredState?.status).toBe('cancelled')
+    expect(expiredState?.voidReason).toMatch(/expired/i)
+    expect(expiredState?.options.every((option: any) => option.wagers.length === 0)).toBe(true)
+
+    expect(state.notifications.some((notification: any) => notification.payload?.betId === expiringBet!.id && /expired/i.test(notification.message))).toBe(true)
+  }, 30000)
+
   it('creates a linked H2H bet for Beer Bomb, accepts side bets, and settles through the canonical bet flow', async () => {
     if (!miniGameTablesAvailable) {
       return
@@ -304,6 +440,7 @@ describe('persistent backend contract', () => {
     expect(pendingMatch?.proposedWager).toBe(2)
     expect(pendingMatch?.revealedSlots).toEqual([])
     expect(pendingMatch?.opponent.membershipId).toBe(opponentMember.membershipId)
+    expect(pendingMatch?.respondByAt).toBeTruthy()
 
     await mutateAppState(challenger, 'respondToMiniGameChallenge', {
       crewId: crew.id,

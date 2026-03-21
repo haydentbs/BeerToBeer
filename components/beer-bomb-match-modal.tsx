@@ -42,7 +42,10 @@ export interface BeerBombMatch {
   loserMembershipId: string | null
   createdAt: Date
   updatedAt: Date
+  respondByAt?: Date | null
   acceptedAt?: Date | null
+  declinedAt?: Date | null
+  cancelledAt?: Date | null
   completedAt?: Date | null
   declineReason?: string | null
 }

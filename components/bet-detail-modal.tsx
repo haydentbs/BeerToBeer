@@ -7,7 +7,7 @@ import type { Bet } from '@/lib/store'
 import {
   formatDrinks,
   getMemberOutcomeForBet,
-  getTimeRemaining,
+  getTimeRemainingOrLabel,
   getUserWagerForBet,
   projectBetPayout,
 } from '@/lib/store'
@@ -29,9 +29,9 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
   useEffect(() => {
     if (bet) {
       // Set initial value on client only to avoid hydration mismatch
-      setTimeRemaining(getTimeRemaining(bet.closesAt))
+      setTimeRemaining(getTimeRemainingOrLabel(bet.closesAt))
       const interval = setInterval(() => {
-        setTimeRemaining(getTimeRemaining(bet.closesAt))
+        setTimeRemaining(getTimeRemainingOrLabel(bet.closesAt))
       }, 1000)
       return () => clearInterval(interval)
     }
@@ -48,9 +48,11 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
   if (!isOpen || !bet) return null
 
   const isResolved = bet.status === 'resolved'
+  const isPendingAccept = bet.status === 'pending_accept'
   const isPendingResult = bet.status === 'pending_result'
   const isDisputed = bet.status === 'disputed'
   const isVoid = bet.status === 'void' || bet.status === 'cancelled'
+  const isDeclined = bet.status === 'declined'
   const userOutcome = getMemberOutcomeForBet(bet, currentUser.id)
   const userWager = getUserWagerForBet(bet, currentUser.id)
   const selectedProjection = selectedOption
@@ -125,14 +127,18 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
             </span>
           </div>
 
-          {(isPendingResult || isDisputed) && (
+          {(isPendingAccept || isPendingResult || isDisputed || isDeclined) && (
             <div className="mb-4 rounded-xl border-2 border-border bg-surface p-4">
               <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {isPendingResult ? 'Pending Result' : 'Disputed'}
+                {isPendingAccept ? 'Pending Invite' : isPendingResult ? 'Pending Result' : isDeclined ? 'Declined' : 'Disputed'}
               </div>
               <div className="mt-2 text-sm text-card-foreground">
-                {isPendingResult
+                {isPendingAccept
+                  ? `Waiting for ${bet.challenger?.name ?? 'the challenged player'} to accept ${formatDrinks(bet.challengeWager ?? 0)} drinks.`
+                  : isPendingResult
                   ? `Proposed winner: ${bet.options.find((option) => option.id === bet.pendingResultOptionId)?.label ?? 'Unknown'}`
+                  : isDeclined
+                  ? bet.voidReason ?? 'This bet invite was declined.'
                   : 'Crew voting is in progress for this result.'}
               </div>
             </div>
@@ -149,8 +155,8 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
               return (
                 <button
                   key={option.id}
-                  onClick={() => !isResolved && setSelectedOption(isSelected ? null : option.id)}
-                  disabled={isResolved}
+                  onClick={() => !isResolved && !isPendingAccept && !isDeclined && setSelectedOption(isSelected ? null : option.id)}
+                  disabled={isResolved || isPendingAccept || isDeclined}
                   className={cn(
                     'w-full relative overflow-hidden rounded-xl border-2 p-3 transition-all text-left',
                     isSelected 
@@ -205,12 +211,16 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
             })}
           </div>
 
-          {(isResolved || isVoid) && (
+          {(isResolved || isVoid || isDeclined) && (
             <div className="rounded-xl border-2 border-border bg-surface p-4">
               <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {isVoid ? 'Result' : 'Settlement'}
+                {isDeclined ? 'Invite status' : isVoid ? 'Result' : 'Settlement'}
               </div>
-              {isVoid ? (
+              {isDeclined ? (
+                <div className="mt-2 text-sm text-card-foreground">
+                  {bet.voidReason ?? 'This bet invite was declined.'}
+                </div>
+              ) : isVoid ? (
                 <div className="mt-2 text-sm text-card-foreground">
                   {bet.voidReason ?? 'This bet was voided.'}
                 </div>
@@ -250,7 +260,7 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
           )}
 
           {/* Wager Controls */}
-          {!isResolved && !isVoid && !isPendingResult && !isDisputed && selectedOption && (
+          {!isResolved && !isVoid && !isDeclined && !isPendingAccept && !isPendingResult && !isDisputed && selectedOption && (
             <div className="pt-4 border-t-2 border-border">
               <div className="flex items-center gap-3">
                 <div className="flex-1">

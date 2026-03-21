@@ -40,6 +40,7 @@ import {
   fetchBootstrapState,
   joinGuest,
   mutateApp,
+  respondToBetOffer,
   respondToMiniGameChallenge,
   takeMiniGameTurn,
 } from '@/lib/client/app-api'
@@ -1219,6 +1220,22 @@ export default function BeerScoreApp() {
     })
   }
 
+  const handleBetOfferAccept = (betId: string) => {
+    if (!activeCrewId) return
+    void runMutation(async () => {
+      const payload = await respondToBetOffer({ crewId: activeCrewId, betId, accepted: true })
+      applyAppPayload(payload)
+    })
+  }
+
+  const handleBetOfferDecline = (betId: string) => {
+    if (!activeCrewId) return
+    void runMutation(async () => {
+      const payload = await respondToBetOffer({ crewId: activeCrewId, betId, accepted: false })
+      applyAppPayload(payload)
+    })
+  }
+
   // Beer Bomb turns are intentionally not wrapped in runMutation — the game board
   // manages its own in-flight state and blocking the full UI would feel jarring mid-game.
   const handleBeerBombTurn = async (matchId: string, slotIndex: number) => {
@@ -1368,6 +1385,8 @@ export default function BeerScoreApp() {
             onSelectBet={handleSelectBet}
             onSelectBeerBombMatch={handleSelectBeerBombMatch}
             onWager={handleWager}
+            onBetOfferAccept={handleBetOfferAccept}
+            onBetOfferDecline={handleBetOfferDecline}
             onBeerBombAccept={handleBeerBombAccept}
             onBeerBombDecline={handleBeerBombDecline}
             onBeerBombCancel={handleBeerBombCancel}
