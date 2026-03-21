@@ -10,6 +10,7 @@ import { NotificationPanel } from './notification-panel'
 interface HomeScreenProps {
   user: User
   userEmail?: string
+  isGuest?: boolean
   crews: Crew[]
   /** Per-crew all-time ledger data for computing net positions */
   crewNetPositions: Record<string, number>
@@ -28,6 +29,7 @@ interface HomeScreenProps {
 export function HomeScreen({
   user,
   userEmail,
+  isGuest = false,
   crews,
   crewNetPositions,
   onSelectCrew,
@@ -46,11 +48,21 @@ export function HomeScreen({
   const [joinCode, setJoinCode] = useState('')
   const [showNotifications, setShowNotifications] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [showGuestCreatePrompt, setShowGuestCreatePrompt] = useState(false)
 
   const liveCrews = crews.filter(c => c.currentNight)
   const otherCrews = crews.filter(c => !c.currentNight)
 
   const unreadCount = notifications.filter(n => !n.read).length
+
+  const handleOpenCreate = () => {
+    if (isGuest) {
+      setShowGuestCreatePrompt(true)
+      return
+    }
+
+    setShowAction('create')
+  }
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -170,9 +182,19 @@ export function HomeScreen({
             </p>
 
             <div className="w-full max-w-xs space-y-3">
+              {isGuest && (
+                <div className="w-full py-3 px-4 rounded-xl bg-surface text-muted-foreground font-semibold border-2 border-border text-center">
+                  Please create an account to create a crew.
+                </div>
+              )}
               <button
-                onClick={() => setShowAction('create')}
-                className="w-full py-4 px-6 rounded-xl bg-primary text-primary-foreground font-display font-normal text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex items-center justify-center gap-2"
+                onClick={handleOpenCreate}
+                className={cn(
+                  'w-full py-4 px-6 rounded-xl font-display font-normal text-lg border-3 border-border transition-all flex items-center justify-center gap-2',
+                  isGuest
+                    ? 'bg-surface text-muted-foreground shadow-none'
+                    : 'bg-primary text-primary-foreground shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1'
+                )}
               >
                 Create a Crew
                 <ArrowRight className="w-5 h-5" />
@@ -370,10 +392,21 @@ export function HomeScreen({
 
         {/* Action Buttons (when user has crews) */}
         {crews.length > 0 && (
-          <div className="flex gap-3">
+          <div className="space-y-3">
+            {isGuest && (
+              <div className="w-full py-3 px-4 rounded-xl bg-surface text-muted-foreground font-semibold border-2 border-border text-center">
+                Please create an account to create a crew.
+              </div>
+            )}
+            <div className="flex gap-3">
             <button
-              onClick={() => setShowAction('create')}
-              className="flex-1 py-3 px-4 rounded-xl bg-card text-card-foreground font-semibold border-2 border-border active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              onClick={handleOpenCreate}
+              className={cn(
+                'flex-1 py-3 px-4 rounded-xl font-semibold border-2 border-border transition-all flex items-center justify-center gap-2',
+                isGuest
+                  ? 'bg-surface text-muted-foreground'
+                  : 'bg-card text-card-foreground active:scale-[0.98]'
+              )}
             >
               <Plus className="w-4 h-4" />
               Create
@@ -386,8 +419,33 @@ export function HomeScreen({
               Join
             </button>
           </div>
+          </div>
         )}
       </div>
+
+      {showGuestCreatePrompt && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            onClick={() => setShowGuestCreatePrompt(false)}
+            aria-label="Close guest create prompt"
+          />
+          <div className="relative w-full max-w-sm rounded-3xl border-3 border-border bg-card p-6 shadow-brutal">
+            <h2 className="text-xl font-bold text-card-foreground">Create an account first</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Please create an account to create a crew.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowGuestCreatePrompt(false)}
+              className="mt-5 w-full rounded-xl border-2 border-border bg-primary px-4 py-3 font-semibold text-primary-foreground"
+            >
+              Okay
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Create Crew Modal */}
       {showAction === 'create' && (

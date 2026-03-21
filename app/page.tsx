@@ -66,6 +66,10 @@ function getSavedTab(): 'tonight' | 'ledger' | 'leaderboard' | 'crew' {
   return 'tonight'
 }
 
+function getSavedView(): AppView {
+  return getSavedCrewId() ? 'crew' : 'home'
+}
+
 function getPendingGuestClaimFlag() {
   if (typeof window === 'undefined') {
     return false
@@ -160,7 +164,9 @@ export default function BeerScoreApp() {
 
     setSession(buildAppSession(authUser))
     setPendingCrewThemeById({})
-    setView('home')
+    setView(getSavedView())
+    setActiveCrewId(getSavedCrewId())
+    setActiveTab(getSavedTab())
   }, [])
 
   const applyAppPayload = useCallback((payload: AppMutationPayload) => {
@@ -251,7 +257,9 @@ export default function BeerScoreApp() {
 
       setSession(guestSession)
       setIsDataReady(false)
-      setView('home')
+      setView(getSavedView())
+      setActiveCrewId(getSavedCrewId())
+      setActiveTab(getSavedTab())
       setAuthNotice(null)
       return true
     }
@@ -716,6 +724,11 @@ export default function BeerScoreApp() {
   }, [])
 
   const handleCreateCrew = async (name: string) => {
+    if (!session || session.isGuest) {
+      setMutationError('Please create an account to create a crew.')
+      return false
+    }
+
     setIsCreatingCrew(true)
 
     const existingCrewIds = new Set(crews.map((crew) => crew.id))
@@ -1001,6 +1014,7 @@ export default function BeerScoreApp() {
       <HomeScreen
         user={session.user}
         userEmail={session.email}
+        isGuest={session.isGuest}
         crews={visibleCrews}
         crewNetPositions={crewNetPositions}
         onSelectCrew={handleSelectCrew}
