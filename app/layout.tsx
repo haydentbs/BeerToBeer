@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Bungee, Lexend, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { BeerScoreThemeProvider } from '@/components/theme-provider'
+import { AppStateProvider } from '@/lib/app-state'
 import './globals.css'
 
 /** Display / poster — titles, primary CTAs */
@@ -63,7 +64,9 @@ export default function RootLayout({
         className={`${bungee.variable} ${lexend.variable} ${geistMono.variable} font-sans antialiased`}
       >
         <BeerScoreThemeProvider>
-          {children}
+          <AppStateProvider>
+            {children}
+          </AppStateProvider>
         </BeerScoreThemeProvider>
         <Analytics />
       </body>
