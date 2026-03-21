@@ -1,7 +1,8 @@
 'use client'
 
-import { use, useState } from 'react'
-import { Beer, LogIn, Users } from 'lucide-react'
+import { use, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Beer, CheckCircle, LogIn, Users } from 'lucide-react'
 import { useAppState } from '@/lib/app-state'
 import { LoadingSpinner } from '@/components/loading-spinner'
 import { DEMO_CREW_CODE } from '@/lib/demo-crew'
@@ -17,6 +18,7 @@ export default function JoinPage({ params }: { params: Promise<{ code: string }>
   const { code } = use(params)
   const crewCode = code.toUpperCase()
 
+  const router = useRouter()
   const {
     session,
     isAuthReady,
@@ -25,8 +27,10 @@ export default function JoinPage({ params }: { params: Promise<{ code: string }>
     authSubmittingMode,
     authNotice,
     loadingCopy,
+    visibleCrews,
     handleGoogleAuth,
     handleGuestJoin,
+    handleJoinCrew,
     handleDevAuth,
     devAuthEnabled,
     supabaseConfigured,
@@ -36,8 +40,55 @@ export default function JoinPage({ params }: { params: Promise<{ code: string }>
   const [name, setName] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
   const [localNotice, setLocalNotice] = useState<string | null>(null)
+  const [joinAttempted, setJoinAttempted] = useState(false)
 
-  // If already authenticated, auto-join the crew
+  // If already authenticated, check if already in the crew or auto-join
+  const normalizedCode = crewCode.replace(/[^A-Z0-9]/g, '')
+  const existingCrew = visibleCrews.find(
+    (c) => c.inviteCode.toUpperCase().replace(/[^A-Z0-9]/g, '') === normalizedCode
+  )
+
+  useEffect(() => {
+    if (!isAuthReady || !session || !isDataReady) return
+
+    if (existingCrew) {
+      // Already in the crew — redirect to it after a brief moment
+      const timeout = setTimeout(() => {
+        router.push(`/crew/${existingCrew.id}/tonight`)
+      }, 2000)
+      return () => clearTimeout(timeout)
+    }
+
+    // Not in this crew yet — try to join
+    if (!joinAttempted) {
+      setJoinAttempted(true)
+      void handleJoinCrew(crewCode).then((success) => {
+        // handleJoinCrew navigates on success
+        if (!success) {
+          setLocalError('Could not join this crew. The code may be invalid.')
+        }
+      })
+    }
+  }, [isAuthReady, isDataReady, session, existingCrew, crewCode, joinAttempted, handleJoinCrew, router])
+
+  if (isAuthReady && session && existingCrew) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6">
+        <div className="w-16 h-16 rounded-full bg-win/15 border-2 border-win flex items-center justify-center mb-4">
+          <CheckCircle className="h-8 w-8 text-win" />
+        </div>
+        <h2 className="text-xl font-bold text-foreground mb-2">You&apos;re already in {existingCrew.name}</h2>
+        <p className="text-sm text-muted-foreground text-center mb-6">Taking you there now...</p>
+        <button
+          onClick={() => router.push(`/crew/${existingCrew.id}/tonight`)}
+          className="px-6 py-3 rounded-xl bg-primary text-primary-foreground font-display font-normal border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all"
+        >
+          Go to {existingCrew.name}
+        </button>
+      </div>
+    )
+  }
+
   if (isAuthReady && session) {
     return (
       <main className="min-h-screen bg-background">
