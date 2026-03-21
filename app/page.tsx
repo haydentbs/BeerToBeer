@@ -25,13 +25,17 @@ import {
   isSupabaseConfigured,
 } from '@/lib/supabase-client'
 import {
+  createBetFromDraft,
+  deriveLedgerEntriesFromBets,
   mockCrews,
   mockCrewData,
   mockNotifications,
   currentUser,
   getNetPosition,
+  placeOrUpdateBetWager,
   generateCrewCode,
   type Crew,
+  type Bet,
   type Notification,
 } from '@/lib/store'
 
@@ -42,6 +46,14 @@ interface AuthActionResult {
   message?: string
 }
 
+interface CreateBetInput {
+  type: Bet['type']
+  title: string
+  options: Array<{ label: string }>
+  challenger?: { id: string } | undefined
+  closeTime: number
+}
+
 export default function BeerScoreApp() {
   const [session, setSession] = useState<AppSession | null>(null)
   const [view, setView] = useState<AppView>('home')
@@ -49,6 +61,7 @@ export default function BeerScoreApp() {
   const [activeTab, setActiveTab] = useState<'tonight' | 'ledger' | 'leaderboard' | 'crew'>('tonight')
   const [showCreateBet, setShowCreateBet] = useState(false)
   const [crews, setCrews] = useState<Crew[]>(mockCrews)
+  const [crewDataById, setCrewDataById] = useState(mockCrewData)
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications)
   const [isAuthReady, setIsAuthReady] = useState(false)
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false)
@@ -175,7 +188,7 @@ export default function BeerScoreApp() {
   const crewNetPositions = useMemo(() => {
     const positions: Record<string, number> = {}
     crews.forEach((crew) => {
-      const data = mockCrewData[crew.id]
+      const data = crewDataById[crew.id]
       if (data) {
         positions[crew.id] = getNetPosition(currentUser.id, data.allTimeLedger)
       } else {
@@ -183,10 +196,10 @@ export default function BeerScoreApp() {
       }
     })
     return positions
-  }, [crews])
+  }, [crewDataById, crews])
 
   const activeCrew = crews.find((crew) => crew.id === activeCrewId)
-  const activeCrewData = activeCrewId ? mockCrewData[activeCrewId] : null
+  const activeCrewData = activeCrewId ? crewDataById[activeCrewId] : null
 
   const handleGoogleAuth = async (): Promise<AuthActionResult> => {
     if (!supabaseConfigured) {
@@ -284,11 +297,14 @@ export default function BeerScoreApp() {
       pastNights: [],
     }
     setCrews((prev) => [...prev, newCrew])
-    mockCrewData[newCrew.id] = {
-      tonightLedger: [],
-      allTimeLedger: [],
-      leaderboard: [{ user: session?.user ?? currentUser, totalWon: 0, winRate: 0, bestNight: 0, streak: 0 }],
-    }
+    setCrewDataById((prev) => ({
+      ...prev,
+      [newCrew.id]: {
+        tonightLedger: [],
+        allTimeLedger: [],
+        leaderboard: [{ user: session?.user ?? currentUser, totalWon: 0, winRate: 0, bestNight: 0, streak: 0 }],
+      },
+    }))
   }
 
   const handleJoinCrew = (code: string) => {
@@ -330,12 +346,64 @@ export default function BeerScoreApp() {
     }
   }
 
-  const handleWager = (_betId: string, _optionId: string, _drinks: number) => {
-    // Mock UI only for now.
+  const handleWager = (betId: string, optionId: string, drinks: number) => {
+    if (!activeCrewId || !session) {
+      return
+    }
+
+    setCrews((prev) =>
+      prev.map((crew) => {
+        if (crew.id !== activeCrewId || !crew.currentNight) {
+          return crew
+        }
+
+        return {
+          ...crew,
+          currentNight: {
+            ...crew.currentNight,
+            bets: crew.currentNight.bets.map((bet) =>
+              bet.id === betId ? placeOrUpdateBetWager(bet, session.user, optionId, drinks) : bet
+            ),
+          },
+        }
+      })
+    )
   }
 
-  const handleCreateBet = (_bet: unknown) => {
-    // Mock UI only for now.
+  const handleCreateBet = (betInput: CreateBetInput) => {
+    if (!activeCrewId || !session) {
+      return
+    }
+
+    const challenger =
+      betInput.challenger && activeCrew
+        ? activeCrew.members.find((member) => member.id === betInput.challenger?.id)
+        : undefined
+
+    const newBet = createBetFromDraft({
+      creator: session.user,
+      type: betInput.type,
+      title: betInput.title,
+      challenger,
+      options: betInput.options,
+      closeTimeMinutes: betInput.closeTime,
+    })
+
+    setCrews((prev) =>
+      prev.map((crew) => {
+        if (crew.id !== activeCrewId || !crew.currentNight) {
+          return crew
+        }
+
+        return {
+          ...crew,
+          currentNight: {
+            ...crew.currentNight,
+            bets: [newBet, ...crew.currentNight.bets],
+          },
+        }
+      })
+    )
   }
 
   const handleSettle = (_entry: unknown) => {
@@ -343,12 +411,98 @@ export default function BeerScoreApp() {
   }
 
   const handleStartNight = () => {
-    // Mock UI only for now.
+    if (!activeCrewId) {
+      return
+    }
+
+    setCrews((prev) =>
+      prev.map((crew) =>
+        crew.id === activeCrewId
+          ? {
+              ...crew,
+              currentNight: {
+                id: `night-${Date.now()}`,
+                name: `Tonight at ${crew.name}`,
+                status: 'active',
+                startedAt: new Date(),
+                bets: [],
+                participants: crew.members,
+              },
+            }
+          : crew
+      )
+    )
   }
 
   const handleEndNight = () => {
-    // Mock UI only for now.
+    if (!activeCrewId) {
+      return
+    }
+
+    setCrews((prev) =>
+      prev.map((crew) => {
+        if (crew.id !== activeCrewId || !crew.currentNight) {
+          return crew
+        }
+
+        return {
+          ...crew,
+          currentNight: undefined,
+          pastNights: [
+            {
+              name: crew.currentNight.name,
+              date: new Date().toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }),
+              bets: crew.currentNight.bets.length,
+              winner: 'TBD',
+            },
+            ...crew.pastNights,
+          ],
+        }
+      })
+    )
+
+    setCrewDataById((prev) => ({
+      ...prev,
+      [activeCrewId]: {
+        ...(prev[activeCrewId] ?? { tonightLedger: [], allTimeLedger: [], leaderboard: [] }),
+        tonightLedger: [],
+      },
+    }))
   }
+
+  useEffect(() => {
+    setCrewDataById((prev) => {
+      let changed = false
+      const next = { ...prev }
+
+      crews.forEach((crew) => {
+        const derivedTonightLedger = crew.currentNight ? deriveLedgerEntriesFromBets(crew.currentNight.bets) : []
+        const existing = next[crew.id]
+        const sameLength = existing?.tonightLedger.length === derivedTonightLedger.length
+        const sameEntries = sameLength && existing?.tonightLedger.every((entry, index) => {
+          const nextEntry = derivedTonightLedger[index]
+          return Boolean(
+            nextEntry &&
+              nextEntry.betId === entry.betId &&
+              nextEntry.fromUser.id === entry.fromUser.id &&
+              nextEntry.toUser.id === entry.toUser.id &&
+              nextEntry.drinks === entry.drinks
+          )
+        })
+
+        if (!existing || !sameEntries) {
+          changed = true
+          next[crew.id] = {
+            tonightLedger: derivedTonightLedger,
+            allTimeLedger: existing?.allTimeLedger ?? prev[crew.id]?.allTimeLedger ?? derivedTonightLedger,
+            leaderboard: existing?.leaderboard ?? prev[crew.id]?.leaderboard ?? [],
+          }
+        }
+      })
+
+      return changed ? next : prev
+    })
+  }, [crews])
 
   if (!isAuthReady) {
     return (

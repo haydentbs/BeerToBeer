@@ -14,12 +14,13 @@ export interface Bet {
   description?: string
   creator: User
   challenger?: User
-  status: 'open' | 'locked' | 'resolved' | 'disputed'
+  status: 'open' | 'locked' | 'resolved' | 'disputed' | 'void'
   closesAt: Date
   createdAt: Date
   options: BetOption[]
   totalPool: number
   result?: string
+  memberOutcomes?: BetMemberOutcome[]
 }
 
 export interface BetOption {
@@ -30,8 +31,17 @@ export interface BetOption {
 }
 
 export interface Wager {
+  id: string
   user: User
   drinks: number
+  createdAt: Date
+}
+
+export interface BetMemberOutcome {
+  user: User
+  optionId: string
+  stake: number
+  netResult: number
 }
 
 export interface LedgerEntry {
@@ -39,6 +49,7 @@ export interface LedgerEntry {
   toUser: User
   drinks: number
   settled: number
+  betId?: string
 }
 
 export interface Night {
@@ -130,8 +141,8 @@ export const mockBets: Bet[] = [
         id: 'over',
         label: 'Over 2.5',
         wagers: [
-          { user: mockUsers[1], drinks: 1 },
-          { user: mockUsers[4], drinks: 0.5 },
+          { id: 'w-1', user: mockUsers[1], drinks: 1, createdAt: new Date(Date.now() - 1000 * 60 * 14) },
+          { id: 'w-2', user: mockUsers[4], drinks: 0.5, createdAt: new Date(Date.now() - 1000 * 60 * 12) },
         ],
         totalDrinks: 1.5,
       },
@@ -139,7 +150,7 @@ export const mockBets: Bet[] = [
         id: 'under',
         label: 'Under 2.5',
         wagers: [
-          { user: mockUsers[2], drinks: 2 },
+          { id: 'w-3', user: mockUsers[2], drinks: 2, createdAt: new Date(Date.now() - 1000 * 60 * 10) },
         ],
         totalDrinks: 2,
       },
@@ -160,8 +171,8 @@ export const mockBets: Bet[] = [
         id: 'jake',
         label: 'Jake wins',
         wagers: [
-          { user: mockUsers[2], drinks: 2 },
-          { user: mockUsers[4], drinks: 1 },
+          { id: 'w-4', user: mockUsers[2], drinks: 2, createdAt: new Date(Date.now() - 1000 * 60 * 4) },
+          { id: 'w-5', user: mockUsers[4], drinks: 1, createdAt: new Date(Date.now() - 1000 * 60 * 3) },
         ],
         totalDrinks: 3,
       },
@@ -169,8 +180,8 @@ export const mockBets: Bet[] = [
         id: 'you',
         label: 'You win',
         wagers: [
-          { user: mockUsers[0], drinks: 2 },
-          { user: mockUsers[1], drinks: 1.5 },
+          { id: 'w-6', user: mockUsers[0], drinks: 2, createdAt: new Date(Date.now() - 1000 * 60 * 2) },
+          { id: 'w-7', user: mockUsers[1], drinks: 1.5, createdAt: new Date(Date.now() - 1000 * 60) },
         ],
         totalDrinks: 3.5,
       },
@@ -186,9 +197,9 @@ export const mockBets: Bet[] = [
     closesAt: new Date(Date.now() + 1000 * 60 * 60),
     createdAt: new Date(Date.now() - 1000 * 60 * 8),
     options: [
-      { id: 'dave', label: 'Dave', wagers: [{ user: mockUsers[3], drinks: 1 }], totalDrinks: 1 },
-      { id: 'mike', label: 'Mike', wagers: [{ user: mockUsers[2], drinks: 0.5 }], totalDrinks: 0.5 },
-      { id: 'emma', label: 'Emma', wagers: [{ user: mockUsers[4], drinks: 1 }], totalDrinks: 1 },
+      { id: 'dave', label: 'Dave', wagers: [{ id: 'w-8', user: mockUsers[3], drinks: 1, createdAt: new Date(Date.now() - 1000 * 60 * 7) }], totalDrinks: 1 },
+      { id: 'mike', label: 'Mike', wagers: [{ id: 'w-9', user: mockUsers[2], drinks: 0.5, createdAt: new Date(Date.now() - 1000 * 60 * 6) }], totalDrinks: 0.5 },
+      { id: 'emma', label: 'Emma', wagers: [{ id: 'w-10', user: mockUsers[4], drinks: 1, createdAt: new Date(Date.now() - 1000 * 60 * 5) }], totalDrinks: 1 },
       { id: 'other', label: 'Someone else', wagers: [], totalDrinks: 0 },
     ],
     totalPool: 2.5,
@@ -203,8 +214,8 @@ export const mockBets: Bet[] = [
     closesAt: new Date(Date.now() - 1000 * 60 * 30),
     createdAt: new Date(Date.now() - 1000 * 60 * 90),
     options: [
-      { id: 'sarah', label: 'Sarah wins', wagers: [{ user: mockUsers[1], drinks: 2 }, { user: mockUsers[4], drinks: 1 }], totalDrinks: 3 },
-      { id: 'mike', label: 'Mike wins', wagers: [{ user: mockUsers[3], drinks: 2 }], totalDrinks: 2 },
+      { id: 'sarah', label: 'Sarah wins', wagers: [{ id: 'w-11', user: mockUsers[1], drinks: 2, createdAt: new Date(Date.now() - 1000 * 60 * 89) }, { id: 'w-12', user: mockUsers[4], drinks: 1, createdAt: new Date(Date.now() - 1000 * 60 * 88) }], totalDrinks: 3 },
+      { id: 'mike', label: 'Mike wins', wagers: [{ id: 'w-13', user: mockUsers[3], drinks: 2, createdAt: new Date(Date.now() - 1000 * 60 * 87) }], totalDrinks: 2 },
     ],
     totalPool: 5,
     result: 'sarah',
@@ -218,8 +229,8 @@ export const mockBets: Bet[] = [
     closesAt: new Date(Date.now() - 1000 * 60 * 45),
     createdAt: new Date(Date.now() - 1000 * 60 * 120),
     options: [
-      { id: 'yes', label: 'Yes', wagers: [{ user: mockUsers[0], drinks: 1 }, { user: mockUsers[2], drinks: 0.5 }], totalDrinks: 1.5 },
-      { id: 'no', label: 'No', wagers: [{ user: mockUsers[5], drinks: 2 }], totalDrinks: 2 },
+      { id: 'yes', label: 'Yes', wagers: [{ id: 'w-14', user: mockUsers[0], drinks: 1, createdAt: new Date(Date.now() - 1000 * 60 * 118) }, { id: 'w-15', user: mockUsers[2], drinks: 0.5, createdAt: new Date(Date.now() - 1000 * 60 * 117) }], totalDrinks: 1.5 },
+      { id: 'no', label: 'No', wagers: [{ id: 'w-16', user: mockUsers[5], drinks: 2, createdAt: new Date(Date.now() - 1000 * 60 * 116) }], totalDrinks: 2 },
     ],
     totalPool: 3.5,
     result: 'no',
@@ -349,12 +360,311 @@ export const mockCrewData: Record<string, {
 // Backward-compatible single crew references
 export const mockCrew: Crew = mockCrews[0]
 
+const CENT_SCALE = 100
+
+function toCents(value: number) {
+  return Math.round(value * CENT_SCALE)
+}
+
+function fromCents(value: number) {
+  return value / CENT_SCALE
+}
+
+function isFunded(option: BetOption) {
+  return option.wagers.some((wager) => wager.drinks > 0)
+}
+
+function sortWagersForRemainder(a: Wager, b: Wager) {
+  if (b.drinks !== a.drinks) {
+    return b.drinks - a.drinks
+  }
+
+  const createdAtDiff = a.createdAt.getTime() - b.createdAt.getTime()
+  if (createdAtDiff !== 0) {
+    return createdAtDiff
+  }
+
+  return a.id.localeCompare(b.id)
+}
+
+export function recomputeBetTotals(bet: Bet): Bet {
+  const options = bet.options.map((option) => {
+    const totalDrinks = option.wagers.reduce((sum, wager) => sum + wager.drinks, 0)
+    return {
+      ...option,
+      totalDrinks: fromCents(toCents(totalDrinks)),
+    }
+  })
+
+  const totalPool = options.reduce((sum, option) => sum + option.totalDrinks, 0)
+
+  return {
+    ...bet,
+    options,
+    totalPool: fromCents(toCents(totalPool)),
+  }
+}
+
+export function isValidWagerAmount(drinks: number) {
+  return drinks > 0 && Number.isInteger(drinks * 2)
+}
+
+export function getBetOptionById(bet: Bet, optionId: string) {
+  return bet.options.find((option) => option.id === optionId)
+}
+
+export function getUserWagerForBet(bet: Bet, userId: string) {
+  for (const option of bet.options) {
+    const wager = option.wagers.find((entry) => entry.user.id === userId)
+    if (wager) {
+      return {
+        optionId: option.id,
+        wager,
+      }
+    }
+  }
+
+  return null
+}
+
+export function projectBetPayout(bet: Bet, optionId: string, stake: number, userId?: string) {
+  if (!isValidWagerAmount(stake)) {
+    return 0
+  }
+
+  const workingBet = recomputeBetTotals({
+    ...bet,
+    options: bet.options.map((option) => ({
+      ...option,
+      wagers: option.wagers.filter((wager) => wager.user.id !== userId),
+    })),
+  })
+
+  const winningOption = getBetOptionById(workingBet, optionId)
+  if (!winningOption) {
+    return 0
+  }
+
+  const totalWinningStake = winningOption.totalDrinks + stake
+  const totalLosingStake = workingBet.totalPool - winningOption.totalDrinks
+
+  if (totalLosingStake <= 0 || totalWinningStake <= 0) {
+    return 0
+  }
+
+  return fromCents(
+    Math.round((toCents(stake) * toCents(totalLosingStake)) / toCents(totalWinningStake))
+  )
+}
+
+export function placeOrUpdateBetWager(bet: Bet, user: User, optionId: string, drinks: number): Bet {
+  if (bet.status !== 'open' || !isValidWagerAmount(drinks)) {
+    return bet
+  }
+
+  const updatedBet = {
+    ...bet,
+    options: bet.options.map((option) => ({
+      ...option,
+      wagers: option.wagers.filter((wager) => wager.user.id !== user.id),
+    })),
+  }
+
+  const nextOptions = updatedBet.options.map((option) => {
+    if (option.id !== optionId) {
+      return option
+    }
+
+    return {
+      ...option,
+      wagers: [
+        ...option.wagers,
+        {
+          id: `w-${Date.now()}-${user.id}`,
+          user,
+          drinks,
+          createdAt: new Date(),
+        },
+      ],
+    }
+  })
+
+  return recomputeBetTotals({
+    ...updatedBet,
+    options: nextOptions,
+  })
+}
+
+export function resolveBetWithParimutuel(bet: Bet, winningOptionId: string): Bet {
+  const recomputedBet = recomputeBetTotals(bet)
+  const winningOption = getBetOptionById(recomputedBet, winningOptionId)
+
+  if (!winningOption) {
+    return bet
+  }
+
+  const fundedOptions = recomputedBet.options.filter(isFunded)
+  if (fundedOptions.length <= 1) {
+    return {
+      ...recomputedBet,
+      status: 'void',
+      result: undefined,
+      memberOutcomes: [],
+    }
+  }
+
+  const totalWinningStakeCents = toCents(winningOption.totalDrinks)
+  const totalLosingStakeCents = toCents(recomputedBet.totalPool - winningOption.totalDrinks)
+
+  if (totalWinningStakeCents <= 0 || totalLosingStakeCents <= 0) {
+    return {
+      ...recomputedBet,
+      status: 'void',
+      result: undefined,
+      memberOutcomes: [],
+    }
+  }
+
+  const winningWagers = [...winningOption.wagers].sort(sortWagersForRemainder)
+  const winnerProfitCents = new Map<string, number>()
+  let allocatedWinnerProfitCents = 0
+
+  for (const wager of winningWagers) {
+    const cents = Math.floor((toCents(wager.drinks) * totalLosingStakeCents) / totalWinningStakeCents)
+    winnerProfitCents.set(wager.id, cents)
+    allocatedWinnerProfitCents += cents
+  }
+
+  let remainderCents = totalLosingStakeCents - allocatedWinnerProfitCents
+  for (const wager of winningWagers) {
+    if (remainderCents <= 0) {
+      break
+    }
+
+    winnerProfitCents.set(wager.id, (winnerProfitCents.get(wager.id) ?? 0) + 1)
+    remainderCents -= 1
+  }
+
+  const memberOutcomes: BetMemberOutcome[] = []
+  for (const option of recomputedBet.options) {
+    for (const wager of option.wagers) {
+      memberOutcomes.push({
+        user: wager.user,
+        optionId: option.id,
+        stake: wager.drinks,
+        netResult: option.id === winningOptionId
+          ? fromCents(winnerProfitCents.get(wager.id) ?? 0)
+          : -wager.drinks,
+      })
+    }
+  }
+
+  return {
+    ...recomputedBet,
+    status: 'resolved',
+    result: winningOptionId,
+    memberOutcomes,
+  }
+}
+
+export function getMemberOutcomeForBet(bet: Bet, userId: string) {
+  return bet.memberOutcomes?.find((outcome) => outcome.user.id === userId) ?? null
+}
+
+export function deriveLedgerEntriesFromBets(bets: Bet[]): LedgerEntry[] {
+  const entries: LedgerEntry[] = []
+
+  for (const bet of bets) {
+    if (bet.status !== 'resolved' || !bet.memberOutcomes?.length) {
+      continue
+    }
+
+    const winners = bet.memberOutcomes
+      .filter((outcome) => outcome.netResult > 0)
+      .sort((a, b) => {
+        if (b.netResult !== a.netResult) {
+          return b.netResult - a.netResult
+        }
+
+        return a.user.id.localeCompare(b.user.id)
+      })
+    const losers = bet.memberOutcomes.filter((outcome) => outcome.netResult < 0)
+    const totalWinnerProfitCents = winners.reduce((sum, winner) => sum + toCents(winner.netResult), 0)
+
+    if (totalWinnerProfitCents <= 0) {
+      continue
+    }
+
+    for (const loser of losers) {
+      const loserLossCents = toCents(Math.abs(loser.netResult))
+      let allocatedCents = 0
+
+      winners.forEach((winner, index) => {
+        const remaining = loserLossCents - allocatedCents
+        if (remaining <= 0) {
+          return
+        }
+
+        const isLast = index === winners.length - 1
+        const cents = isLast
+          ? remaining
+          : Math.floor((loserLossCents * toCents(winner.netResult)) / totalWinnerProfitCents)
+
+        if (cents <= 0) {
+          return
+        }
+
+        allocatedCents += cents
+        entries.push({
+          fromUser: loser.user,
+          toUser: winner.user,
+          drinks: fromCents(cents),
+          settled: 0,
+          betId: bet.id,
+        })
+      })
+    }
+  }
+
+  return entries
+}
+
+export function createBetFromDraft(input: {
+  creator: User
+  type: Bet['type']
+  title: string
+  description?: string
+  challenger?: User
+  options: Array<{ label: string }>
+  closeTimeMinutes: number
+}) {
+  return recomputeBetTotals({
+    id: `bet-${Date.now()}`,
+    type: input.type,
+    title: input.title,
+    description: input.description,
+    creator: input.creator,
+    challenger: input.challenger,
+    status: 'open',
+    closesAt: new Date(Date.now() + input.closeTimeMinutes * 60 * 1000),
+    createdAt: new Date(),
+    options: input.options.map((option, index) => ({
+      id: `${index}-${option.label.toLowerCase().replace(/\s+/g, '-')}`,
+      label: option.label,
+      wagers: [],
+      totalDrinks: 0,
+    })),
+    totalPool: 0,
+  })
+}
+
 // Utility functions
 export function formatDrinks(drinks: number): string {
-  if (drinks === Math.floor(drinks)) {
-    return drinks.toString()
+  const rounded = fromCents(toCents(drinks))
+  if (rounded === Math.floor(rounded)) {
+    return rounded.toString()
   }
-  return drinks.toFixed(1)
+  return rounded.toFixed(1)
 }
 
 export function getTimeRemaining(date: Date): string {
@@ -430,3 +740,11 @@ export function formatRelativeTime(date: Date): string {
   const days = Math.floor(hours / 24)
   return `${days}d ago`
 }
+
+const seededResolvedBets = mockBets.map((bet) =>
+  bet.status === 'resolved' && bet.result ? resolveBetWithParimutuel(bet, bet.result) : recomputeBetTotals(bet)
+)
+
+mockCurrentNight.bets = seededResolvedBets
+mockCrews[0].currentNight = mockCurrentNight
+mockCrewData['crew-1'].tonightLedger = deriveLedgerEntriesFromBets(mockCurrentNight.bets)

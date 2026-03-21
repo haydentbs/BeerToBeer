@@ -4,7 +4,14 @@ import { useState, useEffect } from 'react'
 import { X, Clock, Users, Swords, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Bet } from '@/lib/store'
-import { formatDrinks, getTimeRemaining } from '@/lib/store'
+import {
+  currentUser,
+  formatDrinks,
+  getMemberOutcomeForBet,
+  getTimeRemaining,
+  getUserWagerForBet,
+  projectBetPayout,
+} from '@/lib/store'
 
 interface BetDetailModalProps {
   bet: Bet | null
@@ -40,6 +47,12 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
   if (!isOpen || !bet) return null
 
   const isResolved = bet.status === 'resolved'
+  const isVoid = bet.status === 'void'
+  const userOutcome = getMemberOutcomeForBet(bet, currentUser.id)
+  const userWager = getUserWagerForBet(bet, currentUser.id)
+  const selectedProjection = selectedOption
+    ? projectBetPayout(bet, selectedOption, wagerAmount, currentUser.id)
+    : 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
@@ -167,8 +180,52 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
             })}
           </div>
 
+          {(isResolved || isVoid) && (
+            <div className="rounded-xl border-2 border-border bg-surface p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {isVoid ? 'Result' : 'Settlement'}
+              </div>
+              {isVoid ? (
+                <div className="mt-2 text-sm text-card-foreground">
+                  This bet was voided because there was no opposing action in the pool.
+                </div>
+              ) : (
+                <div className="mt-2 space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Winning option</span>
+                    <span className="font-semibold text-card-foreground">
+                      {bet.options.find((option) => option.id === bet.result)?.label ?? 'Unknown'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Your stake</span>
+                    <span className="font-semibold text-card-foreground">
+                      {formatDrinks(userOutcome?.stake ?? userWager?.wager.drinks ?? 0)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Your net</span>
+                    <span
+                      className={cn(
+                        'font-bold',
+                        (userOutcome?.netResult ?? 0) > 0
+                          ? 'text-win'
+                          : (userOutcome?.netResult ?? 0) < 0
+                            ? 'text-loss'
+                            : 'text-card-foreground'
+                      )}
+                    >
+                      {(userOutcome?.netResult ?? 0) > 0 ? '+' : ''}
+                      {formatDrinks(userOutcome?.netResult ?? 0)}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Wager Controls */}
-          {!isResolved && selectedOption && (
+          {!isResolved && !isVoid && selectedOption && (
             <div className="pt-4 border-t-2 border-border">
               <div className="flex items-center gap-3">
                 <div className="flex-1">
@@ -191,6 +248,12 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
                       </button>
                     ))}
                   </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Estimated net if this wins now:{' '}
+                    <span className="font-semibold text-win">
+                      +{formatDrinks(selectedProjection)}
+                    </span>
+                  </p>
                 </div>
                 <button
                   onClick={handleWager}
