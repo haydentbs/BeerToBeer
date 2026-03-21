@@ -3,7 +3,7 @@
 Complete specification for all bet types, pari-mutuel logic, user flows, edge cases, and tournament system. Updated with audit findings and implementation decisions.
 
 ---
-
+vmfeklbsvipoedl
 ## Part 1: The Pari-Mutuel Engine
 
 All bet types share the same underlying engine. The math is verified and correct across both client and server.
