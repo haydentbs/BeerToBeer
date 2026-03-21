@@ -5,7 +5,11 @@ export interface User {
   name: string
   avatar: string
   initials: string
+  membershipId?: string
+  role?: CrewRole
 }
+
+export type CrewRole = 'creator' | 'admin' | 'member' | 'guest'
 
 export interface Bet {
   id: string
@@ -142,6 +146,22 @@ export const collegeUsers: User[] = [
 ]
 
 export const currentUser = mockUsers[0]
+
+export function getCrewMemberMembershipId(member?: Pick<User, 'id' | 'membershipId'> | null) {
+  return member?.membershipId ?? member?.id ?? null
+}
+
+export function isCrewCreator(member?: Pick<User, 'id' | 'role'> | null, memberIndex?: number) {
+  if (!member) {
+    return false
+  }
+
+  if (member.role) {
+    return member.role === 'creator'
+  }
+
+  return memberIndex === 0
+}
 
 // Mock Active Bets
 export const mockBets: Bet[] = [
@@ -773,7 +793,18 @@ export function generateCrewCode(): string {
 // Notifications
 export interface Notification {
   id: string
-  type: 'bet_created' | 'bet_resolved' | 'challenge' | 'crew_invite' | 'night_started'
+  type:
+    | 'bet_created'
+    | 'bet_resolved'
+    | 'challenge'
+    | 'crew_invite'
+    | 'night_started'
+    | 'night_closed'
+    | 'settlement_requested'
+    | 'settlement_confirmed'
+    | 'role_updated'
+    | 'guest_joined'
+    | 'member_joined'
   title: string
   message: string
   crewName: string

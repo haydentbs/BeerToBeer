@@ -1,6 +1,6 @@
 'use client'
 
-import { Trophy, Swords, Moon, HelpCircle, Users } from 'lucide-react'
+import { Trophy, Swords, Moon, HelpCircle, Users, Bell, Shield, CheckCircle2, UserPlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/lib/store'
 import type { Notification } from '@/lib/store'
@@ -16,8 +16,14 @@ const notificationIcons: Record<Notification['type'], React.ElementType> = {
   bet_resolved: Trophy,
   challenge: Swords,
   night_started: Moon,
+  night_closed: Moon,
   bet_created: HelpCircle,
   crew_invite: Users,
+  settlement_requested: Bell,
+  settlement_confirmed: CheckCircle2,
+  role_updated: Shield,
+  guest_joined: UserPlus,
+  member_joined: UserPlus,
 }
 
 export function NotificationPanel({

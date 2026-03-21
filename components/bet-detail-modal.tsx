@@ -5,13 +5,13 @@ import { X, Clock, Users, Swords, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Bet } from '@/lib/store'
 import {
-  currentUser,
   formatDrinks,
   getMemberOutcomeForBet,
   getTimeRemaining,
   getUserWagerForBet,
   projectBetPayout,
 } from '@/lib/store'
+import { useCurrentUser } from '@/lib/current-user'
 
 interface BetDetailModalProps {
   bet: Bet | null
@@ -21,6 +21,7 @@ interface BetDetailModalProps {
 }
 
 export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModalProps) {
+  const currentUser = useCurrentUser()
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null)
   const [selectedOption, setSelectedOption] = useState<string | null>(null)
   const [wagerAmount, setWagerAmount] = useState(1)

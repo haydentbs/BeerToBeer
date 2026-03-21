@@ -3,12 +3,13 @@
 import { useState } from 'react'
 import { Beer, Bell, Plus, Users, ArrowRight, ChevronRight, Trophy, Flame, LogOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { type Crew, type User, type Notification, currentUser, getNetPosition, formatDrinks, generateCrewCode } from '@/lib/store'
+import { type Crew, type User, type Notification } from '@/lib/store'
 import { DRINK_THEMES } from '@/lib/themes'
 import { NotificationPanel } from './notification-panel'
 
 interface HomeScreenProps {
   user: User
+  userEmail?: string
   crews: Crew[]
   /** Per-crew all-time ledger data for computing net positions */
   crewNetPositions: Record<string, number>
@@ -18,10 +19,12 @@ interface HomeScreenProps {
   notifications?: Notification[]
   onMarkRead?: () => void
   onSignOut?: () => void
+  isSigningOut?: boolean
 }
 
 export function HomeScreen({
   user,
+  userEmail,
   crews,
   crewNetPositions,
   onSelectCrew,
@@ -30,6 +33,7 @@ export function HomeScreen({
   notifications = [],
   onMarkRead,
   onSignOut,
+  isSigningOut = false,
 }: HomeScreenProps) {
   const [showAction, setShowAction] = useState<'none' | 'create' | 'join'>('none')
   const [newCrewName, setNewCrewName] = useState('')
@@ -91,6 +95,7 @@ export function HomeScreen({
               {showNotifications && (
                 <NotificationPanel
                   notifications={notifications}
+                  isOpen={showNotifications}
                   onMarkAllRead={() => onMarkRead?.()}
                   onClose={() => setShowNotifications(false)}
                 />
@@ -120,6 +125,7 @@ export function HomeScreen({
                   <div className="absolute right-0 top-10 z-50 w-48 bg-card rounded-xl border-2 border-border shadow-brutal p-2">
                     <div className="px-3 py-2 border-b border-border mb-2">
                       <p className="text-sm font-bold text-card-foreground">{user.name}</p>
+                      {userEmail && <p className="text-xs text-muted-foreground">{userEmail}</p>}
                     </div>
                     {onSignOut && (
                       <button
@@ -130,7 +136,7 @@ export function HomeScreen({
                         className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-surface transition-colors text-muted-foreground"
                       >
                         <LogOut className="w-4 h-4" />
-                        <span className="text-sm font-semibold">Sign Out</span>
+                        <span className="text-sm font-semibold">{isSigningOut ? 'Signing Out…' : 'Sign Out'}</span>
                       </button>
                     )}
                   </div>
@@ -209,12 +215,12 @@ export function HomeScreen({
                               key={member.id}
                               className={cn(
                                 'w-7 h-7 rounded-full border-2 border-card flex items-center justify-center',
-                                member.id === currentUser.id ? 'bg-primary' : 'bg-secondary'
+                                member.id === user.id ? 'bg-primary' : 'bg-secondary'
                               )}
                             >
                               <span className={cn(
                                 'text-[10px] font-bold',
-                                member.id === currentUser.id ? 'text-primary-foreground' : 'text-secondary-foreground'
+                                member.id === user.id ? 'text-primary-foreground' : 'text-secondary-foreground'
                               )}>
                                 {member.initials}
                               </span>
@@ -309,12 +315,12 @@ export function HomeScreen({
                               key={member.id}
                               className={cn(
                                 'w-7 h-7 rounded-full border-2 border-card flex items-center justify-center',
-                                member.id === currentUser.id ? 'bg-primary' : 'bg-secondary'
+                                member.id === user.id ? 'bg-primary' : 'bg-secondary'
                               )}
                             >
                               <span className={cn(
                                 'text-[10px] font-bold',
-                                member.id === currentUser.id ? 'text-primary-foreground' : 'text-secondary-foreground'
+                                member.id === user.id ? 'text-primary-foreground' : 'text-secondary-foreground'
                               )}>
                                 {member.initials}
                               </span>

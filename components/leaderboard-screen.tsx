@@ -3,10 +3,11 @@
 import { useState } from 'react'
 import { Trophy, TrendingUp, Flame, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { currentUser, formatDrinks } from '@/lib/store'
+import { formatDrinks, type User } from '@/lib/store'
+import { useCurrentUser } from '@/lib/current-user'
 
 interface LeaderboardEntry {
-  user: typeof currentUser
+  user: User
   totalWon: number
   winRate: number
   bestNight: number
@@ -18,6 +19,7 @@ interface LeaderboardScreenProps {
 }
 
 export function LeaderboardScreen({ leaderboard }: LeaderboardScreenProps) {
+  const currentUser = useCurrentUser()
   const [stat, setStat] = useState<'totalWon' | 'winRate' | 'streak'>('totalWon')
 
   const sortedLeaderboard = [...leaderboard].sort((a, b) => {

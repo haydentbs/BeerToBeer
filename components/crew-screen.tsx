@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Copy, Check, ExternalLink, Moon, Settings, Users, Plus, Crown, X, Pencil, UserMinus, Trash2, LogOut, ChevronRight, AlertTriangle, Clock, Trophy, Swords, HelpCircle, Beer, Palette } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { currentUser, type Crew, type PastNight } from '@/lib/store'
+import { getCrewMemberMembershipId, isCrewCreator, type Crew, type PastNight } from '@/lib/store'
 import { DRINK_THEMES, type DrinkTheme } from '@/lib/themes'
 import { useTheme } from './theme-provider'
 
@@ -33,7 +33,8 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
   const [nightThemeOverride, setNightThemeOverride] = useState<DrinkTheme | null>(null)
   const { drinkEmoji, setActiveDrinkTheme } = useTheme()
 
-  const isCreator = crew.members[0]?.id === currentUser.id
+  const currentMember = crew.members.find((member) => member.id === currentUserId)
+  const isCreator = Boolean(currentMember && (currentMember.role ? currentMember.role === 'creator' : crew.members[0]?.id === currentUserId))
 
   const handleCopyCode = async () => {
     await navigator.clipboard.writeText(crew.inviteCode)
@@ -154,14 +155,15 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
           </button>
         </div>
 
-        <div className="bg-card rounded-xl border-2 border-border overflow-hidden">
+          <div className="bg-card rounded-xl border-2 border-border overflow-hidden">
           {crew.members.map((member, index) => {
-            const isCreator = index === 0
-            const isYou = member.id === currentUser.id
+            const memberMembershipId = getCrewMemberMembershipId(member) ?? member.id
+            const isCreator = isCrewCreator(member, index)
+            const isYou = member.id === currentUserId
 
             return (
               <div
-                key={member.id}
+                key={memberMembershipId}
                 className="flex items-center justify-between p-4 border-b border-border last:border-b-0"
               >
                 <div className="flex items-center gap-3">
@@ -187,7 +189,13 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                       )}
                     </div>
                     <span className="text-xs text-muted-foreground">
-                      {isCreator ? 'Crew creator' : 'Member'}
+                      {member.role === 'admin'
+                        ? 'Crew admin'
+                        : isCreator
+                          ? 'Crew creator'
+                          : member.role === 'guest'
+                            ? 'Guest'
+                            : 'Member'}
                     </span>
                   </div>
                 </div>
@@ -391,15 +399,30 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                   <div className="px-3 pt-3 pb-1">
                     <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Manage Members</span>
                   </div>
-                  {crew.members.filter(m => m.id !== currentUser.id).map((member) => (
-                    <div key={member.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-surface transition-colors">
+                  {crew.members.filter(m => m.id !== currentUserId).map((member) => {
+                    const memberMembershipId = getCrewMemberMembershipId(member) ?? member.id
+                    const isCreatorMember = isCrewCreator(member, crew.members.findIndex((crewMember) => crewMember.id === member.id))
+
+                    return (
+                      <div key={memberMembershipId} className="flex items-center justify-between p-3 rounded-xl hover:bg-surface transition-colors">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
                           <span className="text-sm font-bold text-secondary-foreground">{member.initials}</span>
                         </div>
-                        <span className="font-semibold text-card-foreground">{member.name}</span>
+                        <div>
+                          <span className="font-semibold text-card-foreground">{member.name}</span>
+                          <div className="text-[11px] text-muted-foreground">
+                            {member.role === 'admin'
+                              ? 'Admin'
+                              : isCreatorMember
+                                ? 'Creator'
+                                : member.role === 'guest'
+                                  ? 'Guest'
+                                  : 'Member'}
+                          </div>
+                        </div>
                       </div>
-                      {showKickConfirm === member.id ? (
+                      {showKickConfirm === memberMembershipId ? (
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setShowKickConfirm(null)}
@@ -409,7 +432,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                           </button>
                           <button
                             onClick={() => {
-                              onKickMember(member.id)
+                              onKickMember(memberMembershipId)
                               setShowKickConfirm(null)
                             }}
                             className="px-3 py-1.5 rounded-lg bg-loss text-white text-xs font-bold border-2 border-border"
@@ -419,14 +442,15 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                         </div>
                       ) : (
                         <button
-                          onClick={() => setShowKickConfirm(member.id)}
+                          onClick={() => setShowKickConfirm(memberMembershipId)}
                           className="p-2 rounded-lg hover:bg-loss/10 transition-colors"
                         >
                           <UserMinus className="h-4 w-4 text-muted-foreground hover:text-loss" />
                         </button>
                       )}
-                    </div>
-                  ))}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 
@@ -554,7 +578,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                             {i + 1}
                           </span>
                           <span className="font-semibold text-foreground">
-                            {entry.user.id === currentUser.id ? 'You' : entry.user.name}
+                            {entry.user.id === currentUserId ? 'You' : entry.user.name}
                           </span>
                         </div>
                         <span className={cn(

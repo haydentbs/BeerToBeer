@@ -3,16 +3,19 @@
 import { useState } from 'react'
 import { X, Swords, HelpCircle, Clock, Plus, Minus } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { mockUsers, currentUser } from '@/lib/store'
+import type { User } from '@/lib/store'
+import { useCurrentUser } from '@/lib/current-user'
 
 interface CreateBetModalProps {
   isOpen: boolean
   onClose: () => void
+  members: User[]
   onCreate: (bet: {
     type: BetType
     title: string
     options: Array<{ label: string }>
     challenger?: { id: string }
+    wager?: number
     closeTime: number
   }) => void
 }
@@ -20,7 +23,8 @@ interface CreateBetModalProps {
 type BetType = 'prop' | 'h2h'
 type PropFormat = 'yesno' | 'overunder' | 'multi'
 
-export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProps) {
+export function CreateBetModal({ isOpen, onClose, onCreate, members }: CreateBetModalProps) {
+  const currentUser = useCurrentUser()
   const [step, setStep] = useState(1)
   const [betType, setBetType] = useState<BetType | null>(null)
   const [propFormat, setPropFormat] = useState<PropFormat>('yesno')
@@ -31,6 +35,10 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
   const [closeTime, setCloseTime] = useState(5)
 
   const handleCreate = () => {
+    if (!betType) {
+      return
+    }
+
     const bet = {
       type: betType,
       title,
@@ -42,9 +50,9 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
             : options.filter(o => o).map(label => ({ label })))
         : [
             { label: `${currentUser.name} wins` },
-            { label: `${mockUsers.find(u => u.id === challenger)?.name} wins` }
+            { label: `${members.find(u => u.id === challenger)?.name} wins` }
           ],
-      challenger: challenger ? mockUsers.find(u => u.id === challenger) : undefined,
+      challenger: challenger ? { id: challenger } : undefined,
       wager,
       closeTime,
     }
@@ -180,7 +188,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate }: CreateBetModalProp
                   Challenge who?
                 </label>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {mockUsers.filter(u => u.id !== currentUser.id).map((user) => (
+                  {members.filter(u => u.id !== currentUser.id).map((user) => (
                     <button
                       key={user.id}
                       onClick={() => setChallenger(user.id)}

@@ -1,5 +1,5 @@
 import type { User as SupabaseUser } from '@supabase/supabase-js'
-import { currentUser, type User } from '@/lib/store'
+import { type User } from '@/lib/store'
 
 const GUEST_SESSION_COOKIE = 'beerscore_guest_session'
 
@@ -8,6 +8,8 @@ export interface AppSession {
   email?: string
   provider?: string | null
   isGuest?: boolean
+  guestIdentityId?: string
+  membershipId?: string
   user: User
 }
 
@@ -19,7 +21,7 @@ export function buildAppSession(authUser: SupabaseUser): AppSession {
     email: authUser.email ?? '',
     provider: typeof authUser.app_metadata.provider === 'string' ? authUser.app_metadata.provider : null,
     user: {
-      ...currentUser,
+      id: authUser.id,
       name,
       avatar: typeof authUser.user_metadata.avatar_url === 'string' ? authUser.user_metadata.avatar_url : '',
       initials: getInitials(name),
@@ -34,7 +36,7 @@ export function buildGuestSession(name: string): AppSession {
     provider: 'guest',
     isGuest: true,
     user: {
-      ...currentUser,
+      id: `guest-${cleanName.toLowerCase().replace(/\s+/g, '-')}`,
       name: cleanName,
       avatar: '',
       initials: getInitials(cleanName),

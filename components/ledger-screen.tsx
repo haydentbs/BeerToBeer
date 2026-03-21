@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { ArrowRight, Check, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { currentUser, formatDrinks, type LedgerEntry } from '@/lib/store'
+import { formatDrinks, type LedgerEntry, type User } from '@/lib/store'
+import { useCurrentUser } from '@/lib/current-user'
 
 interface LedgerScreenProps {
   tonightLedger: LedgerEntry[]
@@ -12,6 +13,7 @@ interface LedgerScreenProps {
 }
 
 export function LedgerScreen({ tonightLedger, allTimeLedger, onSettle }: LedgerScreenProps) {
+  const currentUser = useCurrentUser()
   const [view, setView] = useState<'tonight' | 'alltime'>('tonight')
   const ledger = view === 'tonight' ? tonightLedger : allTimeLedger
 
@@ -37,7 +39,7 @@ export function LedgerScreen({ tonightLedger, allTimeLedger, onSettle }: LedgerS
 
   // Group by relationship
   const getRelationships = (entries: LedgerEntry[]) => {
-    const relationships: Record<string, { user: typeof currentUser, balance: number, settled: number, direction: 'owed' | 'owing' }> = {}
+    const relationships: Record<string, { user: User, balance: number, settled: number, direction: 'owed' | 'owing' }> = {}
     
     entries.forEach(entry => {
       const outstanding = entry.drinks - entry.settled

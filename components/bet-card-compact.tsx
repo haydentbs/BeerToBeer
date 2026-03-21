@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react'
 import { Clock, Swords, HelpCircle, ChevronRight, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Bet } from '@/lib/store'
-import { currentUser, formatDrinks, getMemberOutcomeForBet, getTimeRemaining } from '@/lib/store'
+import { formatDrinks, getMemberOutcomeForBet, getTimeRemaining } from '@/lib/store'
+import { useCurrentUser } from '@/lib/current-user'
 
 interface BetCardCompactProps {
   bet: Bet
@@ -12,6 +13,7 @@ interface BetCardCompactProps {
 }
 
 export function BetCardCompact({ bet, onTap }: BetCardCompactProps) {
+  const currentUser = useCurrentUser()
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null)
 
   useEffect(() => {
