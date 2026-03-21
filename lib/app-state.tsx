@@ -290,6 +290,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [selectedBeerBombMatchId, setSelectedBeerBombMatchId] = useState<string | null>(null)
 
   const isCrewPollInFlightRef = useRef(false)
+  const applySessionPayloadRef = useRef<(payload: SessionResponse) => void>(() => {})
+  const applyCrewSnapshotRef = useRef<(payload: CrewSnapshotResponse) => void>(() => {})
+  const applyCommandPayloadRef = useRef<(payload: CommandResponse | CrewFeedResponse) => void>(() => {})
   const supabaseConfigured = isSupabaseConfigured()
   const supabaseConfigError = getSupabaseConfigError()
   const devAuthEnabled = isDevAuthEnabled()
@@ -396,6 +399,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (payload.changed.session) applySessionPayload(payload.changed.session)
     if (payload.changed.snapshot) applyCrewSnapshot(payload.changed.snapshot)
   }, [applyCrewSnapshot, applySessionPayload])
+
+  // Keep refs in sync so effects can use stable references
+  applySessionPayloadRef.current = applySessionPayload
+  applyCrewSnapshotRef.current = applyCrewSnapshot
+  applyCommandPayloadRef.current = applyCommandPayload
 
   const visibleCrews = useMemo(() => {
     if (!Object.keys(pendingCrewThemeById).length) return crews
@@ -581,11 +589,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       try {
         const payload = await fetchSessionState()
         if (!cancelled) {
-          applySessionPayload(payload)
+          applySessionPayloadRef.current(payload)
           // If we're on a crew page, load that crew's data
           if (activeCrewId) {
             const snapshot = await fetchCrewSnapshotState(activeCrewId)
-            if (!cancelled) applyCrewSnapshot(snapshot)
+            if (!cancelled) applyCrewSnapshotRef.current(snapshot)
           }
         }
       } catch (error) {
@@ -599,7 +607,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     void loadState()
     return () => { cancelled = true }
-  }, [applyCrewSnapshot, applySessionPayload, sessionLoadKey])
+  }, [sessionLoadKey])
 
   // Load crew snapshot when active crew changes
   useEffect(() => {
@@ -609,14 +617,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const loadSnapshot = async () => {
       try {
         const snapshot = await fetchCrewSnapshotState(activeCrewId)
-        if (!cancelled) applyCrewSnapshot(snapshot)
+        if (!cancelled) applyCrewSnapshotRef.current(snapshot)
       } catch {
         // Best-effort
       }
     }
     void loadSnapshot()
     return () => { cancelled = true }
-  }, [activeCrewId, applyCrewSnapshot, crewDataById, isDataReady, session])
+  }, [activeCrewId, crewDataById, isDataReady, session])
 
   // Polling for active crew
   const activeCrew = visibleCrews.find((crew) => crew.id === activeCrewId)
@@ -654,11 +662,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           startTransition(() => {
             if (payload.needsSnapshot) {
               void fetchCrewSnapshotState(activeCrewId).then((snapshot) => {
-                if (!cancelled) applyCrewSnapshot(snapshot)
+                if (!cancelled) applyCrewSnapshotRef.current(snapshot)
               })
               return
             }
-            applyCommandPayload(payload)
+            applyCommandPayloadRef.current(payload)
           })
         }
       } catch {
@@ -691,8 +699,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     activeCrew?.currentNight?.status,
     activeCrewCursor,
     activeCrewId,
-    applyCommandPayload,
-    applyCrewSnapshot,
     crewCursorById,
     hasActiveNight,
     isDataReady,
