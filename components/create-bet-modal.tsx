@@ -8,7 +8,13 @@ import { mockUsers, currentUser } from '@/lib/store'
 interface CreateBetModalProps {
   isOpen: boolean
   onClose: () => void
-  onCreate: (bet: any) => void
+  onCreate: (bet: {
+    type: BetType
+    title: string
+    options: Array<{ label: string }>
+    challenger?: { id: string }
+    closeTime: number
+  }) => void
 }
 
 type BetType = 'prop' | 'h2h'

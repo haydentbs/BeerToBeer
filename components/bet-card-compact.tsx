@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Clock, Swords, HelpCircle, ChevronRight, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Bet } from '@/lib/store'
-import { formatDrinks, getTimeRemaining } from '@/lib/store'
+import { currentUser, formatDrinks, getMemberOutcomeForBet, getTimeRemaining } from '@/lib/store'
 
 interface BetCardCompactProps {
   bet: Bet
@@ -29,6 +29,8 @@ export function BetCardCompact({ bet, onTap }: BetCardCompactProps) {
   )
   
   const isResolved = bet.status === 'resolved'
+  const isVoid = bet.status === 'void'
+  const userOutcome = getMemberOutcomeForBet(bet, currentUser.id)
 
   return (
     <button
@@ -53,14 +55,38 @@ export function BetCardCompact({ bet, onTap }: BetCardCompactProps) {
       <div className="flex-1 min-w-0">
         <h3 className="font-bold text-card-foreground text-sm truncate">{bet.title}</h3>
         <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-xs text-muted-foreground">
-            {formatDrinks(bet.totalPool)} drinks
-          </span>
-          <span className="text-xs text-muted-foreground">·</span>
-          <span className="text-xs text-muted-foreground">
-            {bet.options.reduce((acc, opt) => acc + opt.wagers.length, 0)} bettors
-          </span>
-          {!isResolved && (
+          {(isResolved || isVoid) ? (
+            <>
+              <span className="text-xs text-muted-foreground">
+                {isVoid
+                  ? 'Void'
+                  : `You ${((userOutcome?.netResult ?? 0) >= 0) ? 'net' : 'lost'}`}
+              </span>
+              {!isVoid && (
+                <>
+                  <span className="text-xs text-muted-foreground">·</span>
+                  <span className={cn(
+                    'text-xs font-semibold',
+                    (userOutcome?.netResult ?? 0) > 0 ? 'text-win' : (userOutcome?.netResult ?? 0) < 0 ? 'text-loss' : 'text-muted-foreground'
+                  )}>
+                    {(userOutcome?.netResult ?? 0) > 0 ? '+' : ''}
+                    {formatDrinks(userOutcome?.netResult ?? 0)}
+                  </span>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <span className="text-xs text-muted-foreground">
+                {formatDrinks(bet.totalPool)} drinks
+              </span>
+              <span className="text-xs text-muted-foreground">·</span>
+              <span className="text-xs text-muted-foreground">
+                {bet.options.reduce((acc, opt) => acc + opt.wagers.length, 0)} bettors
+              </span>
+            </>
+          )}
+          {!isResolved && !isVoid && (
             <>
               <span className="text-xs text-muted-foreground">·</span>
               <span className="text-xs font-semibold text-primary">
@@ -73,8 +99,10 @@ export function BetCardCompact({ bet, onTap }: BetCardCompactProps) {
 
       {/* Timer / Status */}
       <div className="shrink-0 flex items-center gap-2">
-        {isResolved ? (
-          <span className="text-xs font-semibold text-win uppercase">Settled</span>
+        {isResolved || isVoid ? (
+          <span className={cn('text-xs font-semibold uppercase', isVoid ? 'text-muted-foreground' : 'text-win')}>
+            {isVoid ? 'Void' : 'Settled'}
+          </span>
         ) : (
           <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-surface border border-border">
             <Clock className="w-3 h-3 text-primary" />
