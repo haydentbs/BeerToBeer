@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Beer, LogIn, Users } from 'lucide-react'
+import { Beer, FlaskConical, LogIn, Users } from 'lucide-react'
 import { DEMO_CREW_CODE } from '@/lib/demo-crew'
+import type { DevAuthIdentity } from '@/lib/dev-auth'
 
 interface AuthActionResult {
   error?: string
@@ -16,6 +17,8 @@ interface OnboardingScreenProps {
   configError?: string | null
   onGuestJoin: (name: string, crewCode: string) => Promise<AuthActionResult>
   onGoogleAuth: () => Promise<AuthActionResult>
+  devAuthIdentities?: DevAuthIdentity[]
+  onDevAuth?: (identityId: string) => Promise<AuthActionResult>
 }
 
 export function OnboardingScreen({
@@ -25,6 +28,8 @@ export function OnboardingScreen({
   configError,
   onGuestJoin,
   onGoogleAuth,
+  devAuthIdentities = [],
+  onDevAuth,
 }: OnboardingScreenProps) {
   const [name, setName] = useState('')
   const [crewCode, setCrewCode] = useState('')
@@ -48,6 +53,14 @@ export function OnboardingScreen({
 
   const handleGoogleSubmit = async () => {
     handleResult(await onGoogleAuth())
+  }
+
+  const handleDevAuth = async (identityId: string) => {
+    if (!onDevAuth) {
+      return
+    }
+
+    handleResult(await onDevAuth(identityId))
   }
 
   const feedback = localError ?? authNotice ?? localNotice ?? configError
@@ -148,6 +161,31 @@ export function OnboardingScreen({
             <LogIn className="w-5 h-5" />
             {isSubmitting ? 'Opening Google…' : 'Continue with Google'}
           </button>
+
+          {devAuthIdentities.length > 0 && onDevAuth && (
+            <div className="rounded-2xl border-2 border-primary/30 bg-primary/10 p-4 text-left">
+              <div className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-primary">
+                <FlaskConical className="h-4 w-4" />
+                Dev Quick Sign-In
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Pick a local authenticated tester without going through Google.
+              </p>
+              <div className="mt-3 space-y-2">
+                {devAuthIdentities.map((identity) => (
+                  <button
+                    key={identity.id}
+                    type="button"
+                    onClick={() => void handleDevAuth(identity.id)}
+                    disabled={isSubmitting}
+                    className="w-full rounded-xl border-2 border-border bg-card px-4 py-3 text-left text-sm font-semibold text-card-foreground transition-all hover:border-primary/50 disabled:opacity-60"
+                  >
+                    Continue as {identity.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </form>
       </div>
 

@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { type AppSession } from '@/lib/auth'
+import { buildDevSupabaseUser, DEV_AUTH_COOKIE, getDevAuthIdentity, isDevAuthEnabled } from '@/lib/dev-auth'
 import { getServiceRoleClient } from '@/lib/server/supabase'
 
 export interface AuthenticatedActor {
@@ -38,6 +39,19 @@ export async function resolveRequestActor(request: NextRequest): Promise<Request
           authUser: user,
           accessToken,
         }
+      }
+    }
+  }
+
+  if (isDevAuthEnabled()) {
+    const devAuthCookie = request.cookies.get(DEV_AUTH_COOKIE)?.value
+    const devIdentity = getDevAuthIdentity(devAuthCookie ? decodeURIComponent(devAuthCookie) : null)
+
+    if (devIdentity) {
+      return {
+        kind: 'authenticated',
+        authUser: buildDevSupabaseUser(devIdentity),
+        accessToken: `dev:${devIdentity.id}`,
       }
     }
   }

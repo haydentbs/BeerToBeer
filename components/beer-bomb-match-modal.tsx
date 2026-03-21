@@ -436,7 +436,12 @@ export function BeerBombMatchModal({
       : `Waiting on ${otherPlayer.name}`
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={match.title}
+      className="fixed inset-0 z-50 flex items-end justify-center"
+    >
       <div className="absolute inset-0 bg-background/85 backdrop-blur-md" onClick={onClose} />
 
       <div className="relative mb-0 w-full max-w-3xl overflow-hidden rounded-t-[2rem] border-t-3 border-x-3 border-border bg-card shadow-[0_24px_0_0_var(--border)]">

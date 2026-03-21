@@ -21,6 +21,15 @@ import {
   type AppSession,
 } from '@/lib/auth'
 import {
+  buildDevAuthenticatedSession,
+  clearDevAuthCookie,
+  DEV_AUTH_IDENTITIES,
+  getDevAuthIdentity,
+  isDevAuthEnabled,
+  readDevAuthCookie,
+  writeDevAuthCookie,
+} from '@/lib/dev-auth'
+import {
   getSupabaseBrowserClient,
   getSupabaseConfigError,
   isSupabaseConfigured,
@@ -255,6 +264,7 @@ export default function BeerScoreApp() {
   const [authNotice, setAuthNotice] = useState<string | null>(null)
   const supabaseConfigured = isSupabaseConfigured()
   const supabaseConfigError = getSupabaseConfigError()
+  const devAuthEnabled = isDevAuthEnabled()
   const { setActiveDrinkTheme } = useTheme()
   const sessionLoadKey = session
     ? [
@@ -400,6 +410,33 @@ export default function BeerScoreApp() {
       return true
     }
 
+    const restoreDevSession = () => {
+      const identity = readDevAuthCookie()
+      if (!identity) {
+        return false
+      }
+
+      const savedRouteState = getSavedRouteState()
+
+      setSession(buildDevAuthenticatedSession(identity))
+      setIsDataReady(false)
+      setView(savedRouteState.crewId ? 'crew' : 'home')
+      setActiveCrewId(savedRouteState.crewId)
+      setActiveTab(savedRouteState.tab)
+      setShowCreateBet(savedRouteState.modal === 'create-bet')
+      setShowProfile(savedRouteState.modal === 'profile')
+      setSelectedBetId(savedRouteState.modal === 'bet-detail' ? savedRouteState.betId ?? null : null)
+      setSelectedBeerBombMatchId(savedRouteState.modal === 'beer-bomb-detail' ? savedRouteState.matchId ?? null : null)
+      setIsRouteRestorePending(Boolean(savedRouteState.crewId))
+      setAuthNotice(null)
+      return true
+    }
+
+    if (devAuthEnabled && restoreDevSession()) {
+      setIsAuthReady(true)
+      return
+    }
+
     if (!supabaseConfigured) {
       restoreGuestSession()
       setIsAuthReady(true)
@@ -415,7 +452,7 @@ export default function BeerScoreApp() {
           return
         }
 
-        if (!restoreGuestSession()) {
+        if (!restoreDevSession() && !restoreGuestSession()) {
           applyAuthenticatedUser(null)
         }
         setAuthNotice('Supabase session check timed out. You can still continue with Google or join as a guest.')
@@ -434,7 +471,7 @@ export default function BeerScoreApp() {
       if (sessionError) {
         clearAuthFallback()
         setAuthNotice(sessionError.message)
-        if (!restoreGuestSession()) {
+        if (!restoreDevSession() && !restoreGuestSession()) {
           applyAuthenticatedUser(null)
         }
         setIsAuthReady(true)
@@ -443,7 +480,7 @@ export default function BeerScoreApp() {
 
       if (!restoredSession?.user) {
         clearAuthFallback()
-        if (!restoreGuestSession()) {
+        if (!restoreDevSession() && !restoreGuestSession()) {
           applyAuthenticatedUser(null)
         }
         setIsAuthReady(true)
@@ -463,7 +500,7 @@ export default function BeerScoreApp() {
         clearAuthFallback()
         setAuthNotice(userError?.message ?? 'Your session could not be verified. Please sign in again.')
         await supabase.auth.signOut()
-        if (!restoreGuestSession()) {
+        if (!restoreDevSession() && !restoreGuestSession()) {
           applyAuthenticatedUser(null)
         }
         setIsAuthReady(true)
@@ -493,7 +530,7 @@ export default function BeerScoreApp() {
           clearGuestSessionCookie()
         }
         applyAuthenticatedUser(nextSession.user)
-      } else if (!restoreGuestSession()) {
+      } else if (!restoreDevSession() && !restoreGuestSession()) {
         applyAuthenticatedUser(null)
       }
 
@@ -505,7 +542,7 @@ export default function BeerScoreApp() {
       clearAuthFallback()
       subscription.unsubscribe()
     }
-  }, [applyAuthenticatedUser, supabaseConfigured])
+  }, [applyAuthenticatedUser, devAuthEnabled, supabaseConfigured])
 
   useEffect(() => {
     if (!session) {
@@ -844,6 +881,7 @@ export default function BeerScoreApp() {
 
     setIsAuthSubmitting(true)
     setAuthNotice(null)
+    clearDevAuthCookie()
     if (preserveGuestSession) {
       setPendingGuestClaimFlag(true)
     } else {
@@ -872,6 +910,7 @@ export default function BeerScoreApp() {
 
   const handleGuestJoin = async (name: string, crewCode: string): Promise<AuthActionResult> => {
     try {
+      clearDevAuthCookie()
       const payload = await joinGuest(name, crewCode)
       if (!payload.session) {
         return { error: 'Guest session could not be created.' }
@@ -893,9 +932,51 @@ export default function BeerScoreApp() {
     }
   }
 
+  const handleDevAuth = async (identityId: string): Promise<AuthActionResult> => {
+    if (!devAuthEnabled) {
+      return { error: 'Dev auth is only available in local development.' }
+    }
+
+    const identity = getDevAuthIdentity(identityId)
+    if (!identity) {
+      return { error: 'That dev identity is no longer available.' }
+    }
+
+    setIsAuthSubmitting(true)
+    setAuthNotice(null)
+    setPendingGuestClaimFlag(false)
+    clearGuestSessionCookie()
+    clearDevAuthCookie()
+
+    try {
+      writeDevAuthCookie(identity)
+      const nextSession = buildDevAuthenticatedSession(identity)
+      setSession(nextSession)
+      const payload = await fetchBootstrapState()
+      applyAppPayload(payload)
+      setView('home')
+      setActiveCrewId(null)
+      setActiveTab('tonight')
+      return { message: `Playing as ${identity.label}.` }
+    } catch (error) {
+      clearDevAuthCookie()
+      setSession(null)
+      return { error: error instanceof Error ? error.message : 'Could not start the dev session.' }
+    } finally {
+      setIsAuthSubmitting(false)
+      setIsAuthReady(true)
+    }
+  }
+
   const handleSignOut = async () => {
     setPendingGuestClaimFlag(false)
     clearGuestSessionCookie()
+    clearDevAuthCookie()
+
+    if (session?.provider === 'dev') {
+      applyAuthenticatedUser(null)
+      return
+    }
 
     if (!supabaseConfigured) {
       applyAuthenticatedUser(null)
@@ -924,6 +1005,36 @@ export default function BeerScoreApp() {
 
   const handleFinishAccount = async () => {
     await handleGoogleAuth({ preserveGuestSession: true })
+  }
+
+  const handleCreateDevBattleSandbox = async () => {
+    if (!session || session.isGuest || session.provider !== 'dev') {
+      setMutationError('Sign in with a dev user to create a battle sandbox.')
+      return false
+    }
+
+    const crewName = `${session?.user.name ?? 'Dev'} Battle Sandbox`
+    const nightName = `${session?.user.name ?? 'Dev'} Battle Night`
+    const existingCrewIds = new Set(crews.map((crew) => crew.id))
+
+    return runMutation(async () => {
+      const createPayload = await mutateApp('createCrew', { name: crewName })
+      const createdCrew =
+        createPayload.crews.find((crew) => !existingCrewIds.has(crew.id)) ??
+        createPayload.crews.find((crew) => crew.name === crewName)
+
+      if (!createdCrew) {
+        throw new Error('Could not find the sandbox crew after creating it.')
+      }
+
+      const startPayload = await mutateApp('startNight', {
+        crewId: createdCrew.id,
+        name: nightName,
+      })
+      applyAppPayload(startPayload)
+      handleSelectCrew(createdCrew.id)
+      setActiveTab('crew')
+    }, 'Could not create the dev battle sandbox.')
   }
 
   const handleUpdateName = async (name: string) => {
@@ -1233,6 +1344,19 @@ export default function BeerScoreApp() {
         boardSize: challengeInput.boardSize ?? 8,
       })
       applyAppPayload(payload)
+
+      const createdCrew = payload.crews.find((crew) => crew.id === activeCrewId)
+      const createdMatch = [...(createdCrew?.currentNight?.miniGameMatches ?? [])]
+        .filter((match) =>
+          match.status === 'pending' &&
+          (match.challenger.id === session.user.id || match.challenger.name === session.user.name) &&
+          (match.opponent.id === challengeInput.opponent.id || match.opponent.name === opponentMember.name)
+        )
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]
+
+      if (createdMatch) {
+        setSelectedBeerBombMatchId(createdMatch.id)
+      }
     })
   }
 
@@ -1358,6 +1482,8 @@ export default function BeerScoreApp() {
         configError={supabaseConfigError}
         onGuestJoin={handleGuestJoin}
         onGoogleAuth={() => handleGoogleAuth()}
+        devAuthIdentities={devAuthEnabled ? DEV_AUTH_IDENTITIES : []}
+        onDevAuth={devAuthEnabled ? handleDevAuth : undefined}
       />
     )
   }
@@ -1377,6 +1503,8 @@ export default function BeerScoreApp() {
         onMarkRead={() => { void handleMarkNotificationsRead() }}
         onOpenNotification={handleOpenNotification}
         onSignOut={handleSignOut}
+        showDevBattleSandbox={devAuthEnabled && session.provider === 'dev'}
+        onCreateDevBattleSandbox={handleCreateDevBattleSandbox}
         isSigningOut={isSigningOut}
         isMutating={isMutating}
         mutationError={mutationError}

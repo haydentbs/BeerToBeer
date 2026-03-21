@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3100'
 const useGoogleAuth = process.env.PLAYWRIGHT_USE_GOOGLE_AUTH === '1'
+const useDevAuth = process.env.PLAYWRIGHT_USE_DEV_AUTH === '1'
 const useAppServer = process.env.PLAYWRIGHT_USE_APP_SERVER !== '0'
 
 const projects: any[] = [
@@ -33,6 +34,16 @@ if (useGoogleAuth) {
       dependencies: ['setup'],
     }
   )
+}
+
+if (useDevAuth) {
+  projects.unshift({
+    name: 'dev-auth',
+    testMatch: /dev-battle\.spec\.ts/,
+    use: {
+      ...devices['Desktop Chrome'],
+    },
+  })
 }
 
 export default defineConfig({

@@ -39,6 +39,7 @@ export function BottomNav({ activeTab, onTabChange, onCreateBet }: BottomNavProp
         {/* Center Create Button */}
         <button
           onClick={onCreateBet}
+          aria-label="Create bet or challenge"
           className="relative -mt-6 flex items-center justify-center w-16 h-16 rounded-full bg-primary border-3 border-border shadow-[4px_4px_0px_0px_var(--border)] active:shadow-[2px_2px_0px_0px_var(--border)] active:translate-x-[2px] active:translate-y-[2px] transition-all"
         >
           <Plus className="h-8 w-8 text-primary-foreground" strokeWidth={3} />

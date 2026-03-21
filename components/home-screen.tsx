@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Beer, Bell, Plus, Users, ArrowRight, ChevronRight, Trophy, Flame, LogOut } from 'lucide-react'
+import { Beer, Bell, Plus, Users, ArrowRight, ChevronRight, Trophy, Flame, LogOut, FlaskConical, Swords } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type Crew, type User, type Notification } from '@/lib/store'
 import { DRINK_THEMES } from '@/lib/themes'
@@ -21,6 +21,8 @@ interface HomeScreenProps {
   onMarkRead?: () => void
   onOpenNotification?: (notification: Notification) => void
   onSignOut?: () => void
+  showDevBattleSandbox?: boolean
+  onCreateDevBattleSandbox?: () => Promise<boolean>
   isSigningOut?: boolean
   isMutating?: boolean
   mutationError?: string | null
@@ -40,6 +42,8 @@ export function HomeScreen({
   onMarkRead,
   onOpenNotification,
   onSignOut,
+  showDevBattleSandbox = false,
+  onCreateDevBattleSandbox,
   isSigningOut = false,
   isMutating = false,
   mutationError = null,
@@ -173,6 +177,31 @@ export function HomeScreen({
       </header>
 
       <div className="px-4 pt-6 pb-8 space-y-6">
+        {showDevBattleSandbox && onCreateDevBattleSandbox && (
+          <section className="rounded-2xl border-2 border-primary/30 bg-primary/10 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.24em] text-primary">
+                  <FlaskConical className="h-4 w-4" />
+                  Dev Arena
+                </p>
+                <h2 className="mt-2 text-lg font-bold text-foreground">Spin up a battle sandbox</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Create a crew and start tonight&apos;s tab in one step so a second dev user can join and challenge you.
+                </p>
+              </div>
+              <Swords className="h-5 w-5 shrink-0 text-primary" />
+            </div>
+            <button
+              onClick={() => void onCreateDevBattleSandbox()}
+              disabled={isMutating}
+              className="mt-4 rounded-xl border-2 border-border bg-primary px-4 py-3 text-sm font-bold text-primary-foreground shadow-brutal-sm transition-all active:translate-x-[1px] active:translate-y-[1px] disabled:opacity-60"
+            >
+              {isMutating ? 'Building sandbox…' : 'Create Battle Sandbox'}
+            </button>
+          </section>
+        )}
+
         {/* Empty State */}
         {crews.length === 0 && (
           <div className="flex flex-col items-center justify-center py-16">

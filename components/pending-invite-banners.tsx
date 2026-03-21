@@ -24,19 +24,37 @@ export function PendingInviteBanners({
   onBeerBombDecline,
 }: PendingInviteBannersProps) {
   const currentUser = useCurrentUser()
-  const currentMembershipId = currentUser.membershipId ?? currentUser.id
+  const currentActorIds = new Set(
+    [currentUser.membershipId, currentUser.id]
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value))
+  )
+  const currentUserName = currentUser.name.trim().toLowerCase()
+  const matchesCurrentUser = (user?: { id?: string | null; membershipId?: string | null } | null) => {
+    const membershipId = user?.membershipId ?? user?.id ?? null
+    if (membershipId && currentActorIds.has(membershipId)) {
+      return true
+    }
+
+    if (user?.id && currentActorIds.has(user.id)) {
+      return true
+    }
+
+    return false
+  }
+  const matchesCurrentName = (name?: string | null) => Boolean(name && name.trim().toLowerCase() === currentUserName)
 
   const actionableBetOffers = night.bets
-    .filter((bet) => bet.type === 'h2h' && bet.status === 'pending_accept' && bet.challenger?.membershipId === currentMembershipId)
+    .filter((bet) => bet.type === 'h2h' && bet.status === 'pending_accept' && (matchesCurrentUser(bet.challenger) || matchesCurrentName(bet.challenger?.name)))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
   const sentBetOffers = night.bets
-    .filter((bet) => bet.type === 'h2h' && bet.status === 'pending_accept' && bet.creator.membershipId === currentMembershipId)
+    .filter((bet) => bet.type === 'h2h' && bet.status === 'pending_accept' && (matchesCurrentUser(bet.creator) || matchesCurrentName(bet.creator.name)))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
   const actionableMiniGameMatches = night.miniGameMatches
-    .filter((match) => match.status === 'pending' && match.opponent.membershipId === currentMembershipId)
+    .filter((match) => match.status === 'pending' && (matchesCurrentUser(match.opponent) || matchesCurrentName(match.opponent.name)))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
   const sentMiniGameMatches = night.miniGameMatches
-    .filter((match) => match.status === 'pending' && match.challenger.membershipId === currentMembershipId)
+    .filter((match) => match.status === 'pending' && (matchesCurrentUser(match.challenger) || matchesCurrentName(match.challenger.name)))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 
   if (

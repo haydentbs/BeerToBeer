@@ -72,7 +72,7 @@ export function CrewScreen({ crew, currentUserId, currentMembershipId = null, is
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Invite Code</div>
-              <span className="font-mono font-bold text-primary text-lg">{crew.inviteCode}</span>
+              <span data-testid="crew-invite-code" className="font-mono font-bold text-primary text-lg">{crew.inviteCode}</span>
             </div>
             <button
               onClick={handleCopyCode}
