@@ -779,18 +779,79 @@ async function ensureProfile(authUser: SupabaseUser) {
     initials: getInitials(displayName),
   }
 
-  const { data, error } = await supabase
+  const { data: existingProfile, error: existingProfileError } = await supabase
     .from('profiles')
-    .upsert(payload, { onConflict: 'auth_user_id' })
     .select(PROFILE_SELECT)
-    .single()
+    .eq('auth_user_id', authUser.id)
+    .maybeSingle()
 
-  if (error) {
-    throw error
+  if (existingProfileError) {
+    throw existingProfileError
   }
 
-  await supabase.from('profile_preferences').upsert({ profile_id: data.id }, { onConflict: 'profile_id' })
-  return data
+  let profile = existingProfile
+
+  if (!profile) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .upsert(payload, { onConflict: 'auth_user_id' })
+      .select(PROFILE_SELECT)
+      .single()
+
+    if (error) {
+      throw error
+    }
+
+    profile = data
+  } else {
+    const profileNeedsUpdate =
+      profile.email !== payload.email ||
+      profile.display_name !== payload.display_name ||
+      profile.avatar_url !== payload.avatar_url ||
+      profile.initials !== payload.initials
+
+    if (profileNeedsUpdate) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({
+          email: payload.email,
+          display_name: payload.display_name,
+          avatar_url: payload.avatar_url,
+          initials: payload.initials,
+        })
+        .eq('id', profile.id)
+        .select(PROFILE_SELECT)
+        .single()
+
+      if (error) {
+        throw error
+      }
+
+      profile = data
+    }
+  }
+
+  const { data: existingPreferences, error: existingPreferencesError } = await supabase
+    .from('profile_preferences')
+    .select('profile_id')
+    .eq('profile_id', profile.id)
+    .maybeSingle()
+
+  if (existingPreferencesError) {
+    throw existingPreferencesError
+  }
+
+  if (!existingPreferences) {
+    const { error } = await supabase
+      .from('profile_preferences')
+      .insert({ profile_id: profile.id })
+
+    if (error && error.code !== '23505') {
+      throw error
+    }
+  }
+
+  return profile
 }
 
 async function ensureNotificationPreference(membershipId: string) {

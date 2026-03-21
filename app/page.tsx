@@ -616,8 +616,6 @@ export default function BeerScoreApp() {
       }
     }
 
-    void poll()
-
     const intervalMs =
       view === 'crew' && activeTab === 'tonight' && hasLiveMiniGameMatch
         ? 2500

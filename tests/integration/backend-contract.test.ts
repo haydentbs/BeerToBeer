@@ -33,6 +33,17 @@ async function getMiniGameMatchRow(matchId: string) {
   return data
 }
 
+async function getProfilePreferenceTimestamp(profileId: string) {
+  const { data, error } = await getServiceRoleClient()
+    .from('profile_preferences')
+    .select('updated_at')
+    .eq('profile_id', profileId)
+    .single()
+
+  if (error) throw error
+  return data.updated_at as string
+}
+
 let miniGameTablesAvailable = true
 
 describe('persistent backend contract', () => {
@@ -254,6 +265,28 @@ describe('persistent backend contract', () => {
 
     expect(settlementEdge?.drinks).toBe(1)
     expect(settlementEdge?.settled).toBe(0.5)
+  }, 30000)
+
+  it('does not rewrite profile preferences on repeated bootstrap loads', async () => {
+    const actor = makeAuthenticatedActor('Repeated Bootstrap')
+
+    await loadAppState(actor)
+
+    const { data: profile, error: profileError } = await getServiceRoleClient()
+      .from('profiles')
+      .select('id')
+      .eq('auth_user_id', actor.authUser.id)
+      .single()
+
+    if (profileError) throw profileError
+
+    const firstUpdatedAt = await getProfilePreferenceTimestamp(profile.id)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    await loadAppState(actor)
+
+    const secondUpdatedAt = await getProfilePreferenceTimestamp(profile.id)
+    expect(secondUpdatedAt).toBe(firstUpdatedAt)
   }, 30000)
 
   it('persists creator crew settings changes and blocks non-managers from using them', async () => {
