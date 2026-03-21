@@ -432,16 +432,8 @@ export default function BeerScoreApp() {
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} onCreateBet={() => setShowCreateBet(true)} />
 
-      {activeCrew.currentNight && (
-        <button
-          onClick={() => setShowCreateBet(true)}
-          className="fixed bottom-24 right-4 z-30 h-14 rounded-2xl bg-primary px-5 text-sm font-bold text-primary-foreground border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all"
-        >
-          New Bet
-        </button>
-      )}
 
-      <CreateBetModal
+<CreateBetModal
         isOpen={showCreateBet}
         onClose={() => setShowCreateBet(false)}
         onCreate={handleCreateBet}
