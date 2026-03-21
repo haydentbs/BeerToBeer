@@ -34,6 +34,30 @@ const ROLE_ORDER: Record<Role, number> = {
   guest: 3,
 }
 
+const PROFILE_SELECT = 'id, auth_user_id, email, display_name, avatar_url, initials, account_status, created_at, updated_at'
+const PROFILE_VIEWER_SELECT = 'id, email, display_name, avatar_url, initials'
+const GUEST_IDENTITY_SELECT = 'id, display_name, initials, created_by_profile_id, upgraded_to_profile_id, expires_at, created_at, updated_at'
+const CREW_SELECT = 'id, name, slug, description, invite_code, visibility, drink_theme, created_by_profile_id, created_at, updated_at, archived_at'
+const CREW_MEMBERSHIP_SELECT = 'id, crew_id, actor_type, profile_id, guest_identity_id, role, status, nickname, joined_at, left_at, created_at, updated_at'
+const CREW_MEMBERSHIP_WITH_ACTOR_SELECT =
+  `${CREW_MEMBERSHIP_SELECT}, profiles(${PROFILE_VIEWER_SELECT}), guest_identities(${GUEST_IDENTITY_SELECT})`
+const NIGHT_SELECT = 'id, crew_id, name, status, created_by_membership_id, drink_theme_override, started_at, ended_at, created_at, updated_at'
+const NIGHT_PARTICIPANT_SELECT = 'id, night_id, membership_id, joined_at, left_at, created_at, updated_at'
+const BET_SELECT =
+  'id, crew_id, night_id, type, subtype, title, description, status, created_by_membership_id, challenger_membership_id, closes_at, created_at, updated_at, resolved_at, winning_option_id, void_reason, line, pending_result_option_id, pending_result_at'
+const BET_OPTION_SELECT = 'id, bet_id, label, sort_order, is_active, created_at, updated_at'
+const WAGER_SELECT = 'id, bet_id, bet_option_id, membership_id, drinks, metadata, created_at, updated_at'
+const OUTCOME_SELECT = 'id, bet_id, membership_id, option_id, stake, net_result, gross_return, reason, reversal_of, created_at'
+const LEDGER_EVENT_SELECT =
+  'id, crew_id, night_id, bet_id, from_membership_id, to_membership_id, event_type, status, drinks, metadata, created_at'
+const NOTIFICATION_SELECT = 'id, crew_id, membership_id, profile_id, type, title, message, payload, read_at, created_at'
+const NOTIFICATION_PREFERENCE_SELECT = 'id, profile_id, membership_id, bet_updates, night_updates, settlement_updates, crew_updates, created_at, updated_at'
+const CREW_SETTINGS_SELECT =
+  'crew_id, allow_guests, default_bet_close_minutes, default_drink_theme, auto_void_uncontested, settlement_threshold, created_at, updated_at'
+const MINI_GAME_MATCH_SELECT =
+  'id, crew_id, night_id, game_key, title, status, created_by_membership_id, opponent_membership_id, proposed_wager, agreed_wager, board_size, hidden_slot_index, current_turn_membership_id, starting_player_membership_id, winner_membership_id, loser_membership_id, revealed_slots, metadata, accepted_at, declined_at, cancelled_at, completed_at, created_at, updated_at, bet_id, respond_by_at'
+const NOTIFICATION_BOOTSTRAP_LIMIT = 50
+
 function getInitials(value: string) {
   const parts = value.trim().split(/\s+/).filter(Boolean)
   if (!parts.length) return 'BS'
@@ -133,9 +157,17 @@ function compareMemberships(a: any, b: any) {
   return asDate(a.joined_at).getTime() - asDate(b.joined_at).getTime()
 }
 
+function unwrapRelation<T>(value: T | T[] | null | undefined): T | undefined {
+  if (Array.isArray(value)) {
+    return value[0]
+  }
+
+  return value ?? undefined
+}
+
 function buildUserFromMembership(membership: any): User {
-  const profile = membership.profiles
-  const guest = membership.guest_identities
+  const profile = unwrapRelation(membership.profiles)
+  const guest = unwrapRelation(membership.guest_identities)
   const name = profile?.display_name ?? profile?.email ?? guest?.display_name ?? 'Player'
 
   return {
@@ -168,7 +200,7 @@ async function mergeGuestWagers(fromMembershipId: string, toMembershipId: string
   const supabase = getServiceRoleClient()
   const { data: guestWagers, error: guestWagersError } = await supabase
     .from('wagers')
-    .select('*')
+    .select('id, bet_id, bet_option_id, drinks')
     .eq('membership_id', fromMembershipId)
 
   if (guestWagersError) throw guestWagersError
@@ -176,7 +208,7 @@ async function mergeGuestWagers(fromMembershipId: string, toMembershipId: string
   for (const guestWager of guestWagers ?? []) {
     const { data: targetWager, error: targetWagerError } = await supabase
       .from('wagers')
-      .select('*')
+      .select('id, bet_option_id, drinks')
       .eq('membership_id', toMembershipId)
       .eq('bet_id', guestWager.bet_id)
       .maybeSingle()
@@ -220,7 +252,7 @@ async function mergeNightParticipants(fromMembershipId: string, toMembershipId: 
   const supabase = getServiceRoleClient()
   const { data: guestParticipants, error: guestParticipantsError } = await supabase
     .from('night_participants')
-    .select('*')
+    .select('id, night_id, joined_at, left_at')
     .eq('membership_id', fromMembershipId)
 
   if (guestParticipantsError) throw guestParticipantsError
@@ -228,7 +260,7 @@ async function mergeNightParticipants(fromMembershipId: string, toMembershipId: 
   for (const guestParticipant of guestParticipants ?? []) {
     const { data: targetParticipant, error: targetParticipantError } = await supabase
       .from('night_participants')
-      .select('*')
+      .select('id, joined_at, left_at')
       .eq('membership_id', toMembershipId)
       .eq('night_id', guestParticipant.night_id)
       .order('joined_at', { ascending: true })
@@ -279,19 +311,20 @@ async function mergeNightParticipants(fromMembershipId: string, toMembershipId: 
 
 async function mergeDuplicateMembershipRows(table: string, uniqueColumn: string, fromMembershipId: string, toMembershipId: string) {
   const supabase = getServiceRoleClient()
-  const { data: rows, error: rowsError } = await supabase
+  const { data: rowsData, error: rowsError } = await supabase
     .from(table)
-    .select('*')
+    .select(`id, ${uniqueColumn}`)
     .eq('membership_id', fromMembershipId)
 
   if (rowsError) throw rowsError
+  const rows = (rowsData ?? []) as Array<Record<string, any>>
 
-  for (const row of rows ?? []) {
+  for (const row of rows) {
     const { data: targetRow, error: targetRowError } = await supabase
       .from(table)
-      .select('*')
+      .select('id')
       .eq('membership_id', toMembershipId)
-      .eq(uniqueColumn, row[uniqueColumn])
+      .eq(uniqueColumn, (row as Record<string, any>)[uniqueColumn])
       .maybeSingle()
 
     if (targetRowError) throw targetRowError
@@ -319,7 +352,7 @@ async function mergeGuestNotificationPreference(fromMembershipId: string, toMemb
   const supabase = getServiceRoleClient()
   const { data: guestPreference, error: guestPreferenceError } = await supabase
     .from('notification_preferences')
-    .select('*')
+    .select('id')
     .eq('membership_id', fromMembershipId)
     .maybeSingle()
 
@@ -328,7 +361,7 @@ async function mergeGuestNotificationPreference(fromMembershipId: string, toMemb
 
   const { data: targetPreference, error: targetPreferenceError } = await supabase
     .from('notification_preferences')
-    .select('*')
+    .select('id')
     .eq('membership_id', toMembershipId)
     .maybeSingle()
 
@@ -377,32 +410,35 @@ async function updateMembershipReference(table: string, column: string, fromMemb
 
 async function mergeGuestMembershipIntoProfile(profile: any, guestMembershipId: string) {
   const supabase = getServiceRoleClient()
-  const { data: guestMembership, error: guestMembershipError } = await supabase
+  const { data: guestMembershipData, error: guestMembershipError } = await supabase
     .from('crew_memberships')
-    .select('*, guest_identities(*)')
+    .select(`${CREW_MEMBERSHIP_SELECT}, guest_identities(${GUEST_IDENTITY_SELECT})`)
     .eq('id', guestMembershipId)
     .single()
 
   if (guestMembershipError) throw guestMembershipError
+  const guestMembership: any = guestMembershipData
+  const guestIdentity = unwrapRelation(guestMembership.guest_identities)
   if (guestMembership.actor_type !== 'guest' || !guestMembership.guest_identity_id) {
     throw new Error('Only guest memberships can be claimed.')
   }
 
   if (
-    guestMembership.guest_identities?.upgraded_to_profile_id &&
-    guestMembership.guest_identities.upgraded_to_profile_id !== profile.id
+    guestIdentity?.upgraded_to_profile_id &&
+    guestIdentity.upgraded_to_profile_id !== profile.id
   ) {
     throw new Error('This guest has already been claimed by another account.')
   }
 
-  const { data: existingMembership, error: existingMembershipError } = await supabase
+  const { data: existingMembershipData, error: existingMembershipError } = await supabase
     .from('crew_memberships')
-    .select('*')
+    .select('id, crew_id, role, status, left_at')
     .eq('crew_id', guestMembership.crew_id)
     .eq('profile_id', profile.id)
     .maybeSingle()
 
   if (existingMembershipError) throw existingMembershipError
+  const existingMembership: any = existingMembershipData
 
   let targetMembershipId = guestMembership.id
 
@@ -495,7 +531,7 @@ async function mergeGuestMembershipIntoProfile(profile: any, guestMembershipId: 
 
   return {
     crewId: guestMembership.crew_id as string,
-    guestName: guestMembership.guest_identities?.display_name ?? 'Guest',
+    guestName: guestIdentity?.display_name ?? 'Guest',
     guestIdentityId: guestMembership.guest_identity_id as string,
     targetMembershipId,
   }
@@ -741,7 +777,7 @@ async function ensureProfile(authUser: SupabaseUser) {
   const { data, error } = await supabase
     .from('profiles')
     .upsert(payload, { onConflict: 'auth_user_id' })
-    .select()
+    .select(PROFILE_SELECT)
     .single()
 
   if (error) {
@@ -777,7 +813,7 @@ async function findCrewByInviteCode(code: string) {
 
   const { data: crew } = await supabase
     .from('crews')
-    .select('*')
+    .select(CREW_SELECT)
     .eq('invite_code', normalizedCode)
     .is('archived_at', null)
     .maybeSingle()
@@ -798,7 +834,7 @@ async function findCrewByInviteCode(code: string) {
 
   const { data: invitedCrew } = await supabase
     .from('crews')
-    .select('*')
+    .select(CREW_SELECT)
     .eq('id', invite.crew_id)
     .is('archived_at', null)
     .maybeSingle()
@@ -848,7 +884,7 @@ async function getActorMembershipForCrew(actor: RequestActor, crewId: string) {
     const profile = await ensureProfile(actor.authUser)
     const { data, error } = await supabase
       .from('crew_memberships')
-      .select('*, profiles(*), guest_identities(*)')
+      .select(CREW_MEMBERSHIP_WITH_ACTOR_SELECT)
       .eq('crew_id', crewId)
       .eq('profile_id', profile.id)
       .maybeSingle()
@@ -860,7 +896,7 @@ async function getActorMembershipForCrew(actor: RequestActor, crewId: string) {
   if (actor.kind === 'guest' && actor.session.guestIdentityId) {
     const { data, error } = await supabase
       .from('crew_memberships')
-      .select('*, profiles(*), guest_identities(*)')
+      .select(CREW_MEMBERSHIP_WITH_ACTOR_SELECT)
       .eq('crew_id', crewId)
       .eq('guest_identity_id', actor.session.guestIdentityId)
       .maybeSingle()
@@ -895,7 +931,7 @@ async function ensureNightParticipant(nightId: string, membershipId: string) {
   const supabase = getServiceRoleClient()
   const { data: existing, error } = await supabase
     .from('night_participants')
-    .select('*')
+    .select('id')
     .eq('night_id', nightId)
     .eq('membership_id', membershipId)
     .order('joined_at', { ascending: false })
@@ -970,7 +1006,7 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
 
   let actorMembershipsQuery = supabase
     .from('crew_memberships')
-    .select('*, profiles(*), guest_identities(*)')
+    .select(CREW_MEMBERSHIP_WITH_ACTOR_SELECT)
 
   if (profile) {
     actorMembershipsQuery = actorMembershipsQuery.eq('profile_id', profile.id)
@@ -1004,9 +1040,9 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
     membershipResult,
     nightResult,
   ] = await Promise.all([
-    supabase.from('crews').select('*').in('id', crewIds).is('archived_at', null),
-    supabase.from('crew_memberships').select('*, profiles(*), guest_identities(*)').in('crew_id', crewIds),
-    supabase.from('nights').select('*').in('crew_id', crewIds).order('started_at', { ascending: false }),
+    supabase.from('crews').select(CREW_SELECT).in('id', crewIds).is('archived_at', null),
+    supabase.from('crew_memberships').select(CREW_MEMBERSHIP_WITH_ACTOR_SELECT).in('crew_id', crewIds),
+    supabase.from('nights').select(NIGHT_SELECT).in('crew_id', crewIds).order('started_at', { ascending: false }),
   ])
 
   if (crewResult.error) throw crewResult.error
@@ -1019,27 +1055,29 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
   const notificationQuery = profile
     ? supabase
         .from('notifications')
-        .select('*')
+        .select(NOTIFICATION_SELECT)
         .or(`profile_id.eq.${profile.id},membership_id.in.(${activeMemberships.map((membership: any) => membership.id).join(',')})`)
         .order('created_at', { ascending: false })
+        .limit(NOTIFICATION_BOOTSTRAP_LIMIT)
     : supabase
         .from('notifications')
-        .select('*')
+        .select(NOTIFICATION_SELECT)
         .in('membership_id', activeMemberships.map((membership: any) => membership.id))
         .order('created_at', { ascending: false })
+        .limit(NOTIFICATION_BOOTSTRAP_LIMIT)
 
   const canLoadMiniGameMatches = await hasMiniGameMatchTable()
   const [participantResult, betResult, notificationResult, ledgerResult, miniGameMatchResult] = await Promise.all([
     nightIds.length
-      ? supabase.from('night_participants').select('*').in('night_id', nightIds)
+      ? supabase.from('night_participants').select(NIGHT_PARTICIPANT_SELECT).in('night_id', nightIds)
       : Promise.resolve({ data: [], error: null } as any),
     nightIds.length
-      ? supabase.from('bets').select('*').in('night_id', nightIds).order('created_at', { ascending: false })
+      ? supabase.from('bets').select(BET_SELECT).in('night_id', nightIds).order('created_at', { ascending: false })
       : Promise.resolve({ data: [], error: null } as any),
     notificationQuery,
-    supabase.from('ledger_events').select('*').in('crew_id', crewIds).order('created_at', { ascending: false }),
+    supabase.from('ledger_events').select(LEDGER_EVENT_SELECT).in('crew_id', crewIds).order('created_at', { ascending: false }),
     canLoadMiniGameMatches && nightIds.length
-      ? supabase.from('mini_game_matches').select('*').in('night_id', nightIds).order('created_at', { ascending: false })
+      ? supabase.from('mini_game_matches').select(MINI_GAME_MATCH_SELECT).in('night_id', nightIds).order('created_at', { ascending: false })
       : Promise.resolve({ data: [], error: null } as any),
   ])
 
@@ -1064,13 +1102,13 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
     outcomeResult,
   ] = await Promise.all([
     betIds.length
-      ? supabase.from('bet_options').select('*').in('bet_id', betIds).order('sort_order', { ascending: true })
+      ? supabase.from('bet_options').select(BET_OPTION_SELECT).in('bet_id', betIds).order('sort_order', { ascending: true })
       : Promise.resolve({ data: [], error: null } as any),
     betIds.length
-      ? supabase.from('wagers').select('*').in('bet_id', betIds)
+      ? supabase.from('wagers').select(WAGER_SELECT).in('bet_id', betIds)
       : Promise.resolve({ data: [], error: null } as any),
     betIds.length
-      ? supabase.from('bet_member_outcomes').select('*').in('bet_id', betIds)
+      ? supabase.from('bet_member_outcomes').select(OUTCOME_SELECT).in('bet_id', betIds)
       : Promise.resolve({ data: [], error: null } as any),
   ])
 
@@ -1289,20 +1327,26 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
 
   const claimableGuests: ClaimableGuest[] = profile
     ? membershipRows
-        .filter((membership: any) =>
-          membership.actor_type === 'guest' &&
-          crewIds.includes(membership.crew_id) &&
-          !membership.guest_identities?.upgraded_to_profile_id
-        )
-        .map((membership: any) => ({
-          guestMembershipId: membership.id,
-          guestIdentityId: membership.guest_identity_id,
-          guestName: membership.guest_identities?.display_name ?? 'Guest',
-          crewId: membership.crew_id,
-          crewName: (crewResult.data ?? []).find((crew: any) => crew.id === membership.crew_id)?.name ?? 'BeerScore',
-          status: membership.status,
-          joinedAt: asDate(membership.joined_at).toISOString(),
-        }))
+        .filter((membership: any) => {
+          const guestIdentity = unwrapRelation(membership.guest_identities)
+          return (
+            membership.actor_type === 'guest' &&
+            crewIds.includes(membership.crew_id) &&
+            !guestIdentity?.upgraded_to_profile_id
+          )
+        })
+        .map((membership: any) => {
+          const guestIdentity = unwrapRelation(membership.guest_identities)
+          return {
+            guestMembershipId: membership.id,
+            guestIdentityId: membership.guest_identity_id,
+            guestName: guestIdentity?.display_name ?? 'Guest',
+            crewId: membership.crew_id,
+            crewName: (crewResult.data ?? []).find((crew: any) => crew.id === membership.crew_id)?.name ?? 'BeerScore',
+            status: membership.status,
+            joinedAt: asDate(membership.joined_at).toISOString(),
+          }
+        })
     : []
 
   return {
@@ -1333,7 +1377,7 @@ export async function joinCrewAsGuest(name: string, inviteCode: string): Promise
 
   const { data: settings } = await supabase
     .from('crew_settings')
-    .select('*')
+    .select(CREW_SETTINGS_SELECT)
     .eq('crew_id', crew.id)
     .maybeSingle()
 
@@ -1347,7 +1391,7 @@ export async function joinCrewAsGuest(name: string, inviteCode: string): Promise
       display_name: cleanName,
       initials: getInitials(cleanName),
     })
-    .select()
+    .select(GUEST_IDENTITY_SELECT)
     .single()
 
   if (guestError) throw guestError
@@ -1361,7 +1405,7 @@ export async function joinCrewAsGuest(name: string, inviteCode: string): Promise
       role: 'guest',
       status: 'active',
     })
-    .select()
+    .select(CREW_MEMBERSHIP_SELECT)
     .single()
 
   if (membershipError) throw membershipError
@@ -1370,7 +1414,7 @@ export async function joinCrewAsGuest(name: string, inviteCode: string): Promise
 
   const { data: activeNight } = await supabase
     .from('nights')
-    .select('*')
+    .select('id')
     .eq('crew_id', crew.id)
     .in('status', ['active', 'winding-down'])
     .order('started_at', { ascending: false })
@@ -1406,16 +1450,16 @@ async function loadBetResolutionContext(betId: string) {
   const supabase = getServiceRoleClient()
   const { data: bet, error: betError } = await supabase
     .from('bets')
-    .select('*')
+    .select(BET_SELECT)
     .eq('id', betId)
     .single()
 
   if (betError) throw betError
 
   const [optionResult, wagerResult, membershipResult] = await Promise.all([
-    supabase.from('bet_options').select('*').eq('bet_id', betId).order('sort_order', { ascending: true }),
-    supabase.from('wagers').select('*').eq('bet_id', betId),
-    supabase.from('crew_memberships').select('*, profiles(*), guest_identities(*)').eq('crew_id', bet.crew_id),
+    supabase.from('bet_options').select(BET_OPTION_SELECT).eq('bet_id', betId).order('sort_order', { ascending: true }),
+    supabase.from('wagers').select(WAGER_SELECT).eq('bet_id', betId),
+    supabase.from('crew_memberships').select(CREW_MEMBERSHIP_WITH_ACTOR_SELECT).eq('crew_id', bet.crew_id),
   ])
 
   if (optionResult.error) throw optionResult.error
@@ -1490,7 +1534,7 @@ async function loadMiniGameMatchContext(matchId: string) {
   const supabase = getServiceRoleClient()
   const { data: match, error: matchError } = await supabase
     .from('mini_game_matches')
-    .select('*')
+    .select(MINI_GAME_MATCH_SELECT)
     .eq('id', matchId)
     .single()
 
@@ -1498,7 +1542,7 @@ async function loadMiniGameMatchContext(matchId: string) {
 
   const { data: membershipRows, error: membershipError } = await supabase
     .from('crew_memberships')
-    .select('*, profiles(*), guest_identities(*)')
+    .select(CREW_MEMBERSHIP_WITH_ACTOR_SELECT)
     .eq('crew_id', match.crew_id)
 
   if (membershipError) throw membershipError
@@ -1571,7 +1615,7 @@ async function processMiniGameExpirationsForCrews(crewIds: string[]) {
   const nowIso = new Date().toISOString()
   const { data: staleMatches, error } = await supabase
     .from('mini_game_matches')
-    .select('*')
+    .select('id, crew_id, status, created_by_membership_id, respond_by_at')
     .in('crew_id', crewIds)
     .eq('status', 'pending')
     .lt('respond_by_at', nowIso)
@@ -1652,7 +1696,7 @@ async function createLinkedMiniGameBet(
       challenger_membership_id: match.opponent_membership_id,
       closes_at: closesAt,
     })
-    .select()
+    .select('id, crew_id, night_id, title, status, created_by_membership_id, challenger_membership_id')
     .single()
 
   if (betError) throw betError
@@ -1673,7 +1717,7 @@ async function createLinkedMiniGameBet(
   const { data: createdOptions, error: optionError } = await supabase
     .from('bet_options')
     .insert(optionRows)
-    .select()
+    .select('id, sort_order')
 
   if (optionError) throw optionError
 
@@ -1738,7 +1782,7 @@ async function proposeMiniGameMatchResult(
 
   const supabase = getServiceRoleClient()
   const [{ data: bet, error: betError }, { data: options, error: optionsError }] = await Promise.all([
-    supabase.from('bets').select('*').eq('id', match.bet_id).single(),
+    supabase.from('bets').select(BET_SELECT).eq('id', match.bet_id).single(),
     supabase.from('bet_options').select('id, sort_order').eq('bet_id', match.bet_id).order('sort_order', { ascending: true }),
   ])
 
@@ -1908,7 +1952,7 @@ async function finalizeDispute(disputeId: string, actorMembershipId: string) {
   const supabase = getServiceRoleClient()
   const { data: dispute, error: disputeError } = await supabase
     .from('disputes')
-    .select('*')
+    .select('id, bet_id, status')
     .eq('id', disputeId)
     .single()
 
@@ -1919,7 +1963,7 @@ async function finalizeDispute(disputeId: string, actorMembershipId: string) {
 
   const { data: bet, error: betError } = await supabase
     .from('bets')
-    .select('*')
+    .select(BET_SELECT)
     .eq('id', dispute.bet_id)
     .single()
 
@@ -1929,7 +1973,7 @@ async function finalizeDispute(disputeId: string, actorMembershipId: string) {
   }
 
   const [voteResult, wagerResult] = await Promise.all([
-    supabase.from('dispute_votes').select('*').eq('dispute_id', dispute.id),
+    supabase.from('dispute_votes').select('membership_id, option_id').eq('dispute_id', dispute.id),
     supabase.from('wagers').select('membership_id').eq('bet_id', bet.id),
   ])
 
@@ -2085,7 +2129,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
           invite_code: inviteCode,
           created_by_profile_id: profile.id,
         })
-        .select()
+        .select('id, drink_theme')
         .single()
 
       if (crewError) throw crewError
@@ -2099,7 +2143,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
           role: 'creator',
           status: 'active',
         })
-        .select()
+        .select('id')
         .single()
 
       if (membershipError) throw membershipError
@@ -2134,7 +2178,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
       const { data: existing, error: existingError } = await supabase
         .from('crew_memberships')
-        .select('*')
+        .select('id, role')
         .eq('crew_id', crew.id)
         .eq('profile_id', profile.id)
         .maybeSingle()
@@ -2165,7 +2209,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
             role: 'member',
             status: 'active',
           })
-          .select()
+          .select('id')
           .single()
 
         if (error) throw error
@@ -2180,7 +2224,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
       const { data: activeNight } = await supabase
         .from('nights')
-        .select('*')
+        .select('id')
         .eq('crew_id', crew.id)
         .in('status', ['active', 'winding-down'])
         .order('started_at', { ascending: false })
@@ -2219,7 +2263,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
       const { data: guestMembership, error: guestMembershipError } = await supabase
         .from('crew_memberships')
-        .select('*, guest_identities(*)')
+        .select(`${CREW_MEMBERSHIP_SELECT}, guest_identities(${GUEST_IDENTITY_SELECT})`)
         .eq('id', payload.guestMembershipId)
         .single()
 
@@ -2234,7 +2278,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
       const { data: existingMembership } = await supabase
         .from('crew_memberships')
-        .select('*')
+        .select('id')
         .eq('crew_id', guestMembership.crew_id)
         .eq('profile_id', profile.id)
         .maybeSingle()
@@ -2338,7 +2382,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
           created_by_membership_id: actorMembership.id,
           drink_theme_override: payload.drinkThemeOverride ?? null,
         })
-        .select()
+        .select('id, name')
         .single()
 
       if (nightError) throw nightError
@@ -2438,7 +2482,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
       const { data: night, error: nightError } = await supabase
         .from('nights')
-        .select('*')
+        .select('id, status')
         .eq('id', payload.nightId)
         .single()
 
@@ -2527,7 +2571,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
           challenger_membership_id: payload.challengerMembershipId ?? null,
           closes_at: new Date(Date.now() + closeTime * 60_000).toISOString(),
         })
-        .select()
+        .select('id, title')
         .single()
 
       if (betError) throw betError
@@ -2545,7 +2589,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       const { data: createdOptions, error: optionError } = await supabase
         .from('bet_options')
         .insert(options)
-        .select()
+        .select('id, sort_order')
 
       if (optionError) throw optionError
 
@@ -2625,7 +2669,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
       const { data: bet, error: betError } = await supabase
         .from('bets')
-        .select('*')
+        .select('id, night_id, status, closes_at')
         .eq('id', payload.betId)
         .single()
 
@@ -2651,7 +2695,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
       const { data: option, error: optionError } = await supabase
         .from('bet_options')
-        .select('*')
+        .select('id')
         .eq('id', payload.optionId)
         .eq('bet_id', payload.betId)
         .single()
@@ -2678,7 +2722,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       const actorMembership = await requireActorMembership(actor, payload.crewId)
       const { data: bet, error: betError } = await supabase
         .from('bets')
-        .select('*')
+        .select(BET_SELECT)
         .eq('id', payload.betId)
         .single()
 
@@ -2747,7 +2791,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       const actorMembership = await requireActorMembership(actor, payload.crewId)
       const { data: bet, error: betError } = await supabase
         .from('bets')
-        .select('*')
+        .select('id, status, pending_result_option_id, pending_result_at')
         .eq('id', payload.betId)
         .single()
 
@@ -2793,7 +2837,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       const actorMembership = await requireActorMembership(actor, payload.crewId)
       const { data: bet, error: betError } = await supabase
         .from('bets')
-        .select('*')
+        .select('id, title, status, pending_result_option_id, pending_result_at')
         .eq('id', payload.betId)
         .single()
 
@@ -2852,7 +2896,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       const actorMembership = await requireActorMembership(actor, payload.crewId)
       const { data: dispute, error: disputeError } = await supabase
         .from('disputes')
-        .select('*')
+        .select('id, bet_id, status, expires_at')
         .eq('id', payload.disputeId)
         .single()
 
@@ -2866,7 +2910,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       }
 
       const [{ data: bet, error: betError }, { data: option, error: optionError }, { data: wagers, error: wagersError }] = await Promise.all([
-        supabase.from('bets').select('*').eq('id', dispute.bet_id).single(),
+        supabase.from('bets').select('id').eq('id', dispute.bet_id).single(),
         supabase.from('bet_options').select('id').eq('id', payload.optionId).eq('bet_id', dispute.bet_id).single(),
         supabase.from('wagers').select('membership_id').eq('bet_id', dispute.bet_id),
       ])
@@ -2924,10 +2968,10 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       }
 
       const [nightResult, opponentResult] = await Promise.all([
-        supabase.from('nights').select('*').eq('id', payload.nightId).single(),
+        supabase.from('nights').select('id, crew_id, status').eq('id', payload.nightId).single(),
         supabase
           .from('crew_memberships')
-          .select('*, profiles(*), guest_identities(*)')
+          .select(CREW_MEMBERSHIP_WITH_ACTOR_SELECT)
           .eq('id', opponentMembershipId)
           .single(),
       ])
@@ -2969,7 +3013,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
           revealed_slots: [],
           respond_by_at: new Date(Date.now() + closeTime * 60_000).toISOString(),
         })
-        .select()
+        .select('id')
         .single()
 
       if (matchError) throw matchError
@@ -3243,7 +3287,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
       const { data: fullBet, error: fullBetError } = await supabase
         .from('bets')
-        .select('*')
+        .select(BET_SELECT)
         .eq('id', payload.betId)
         .single()
 
@@ -3339,7 +3383,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
           respond_by_at: new Date(Date.now() + closeTime * 60_000).toISOString(),
           metadata: payload.metadata ?? {},
         })
-        .select()
+        .select('id')
         .single()
 
       if (matchError) throw matchError
