@@ -17,7 +17,7 @@ import {
   type User,
 } from '@/lib/store'
 import { getServiceRoleClient } from '@/lib/server/supabase'
-import type { AppBootstrapOptions, AppBootstrapPayload, AppMutationPayload, ClaimableGuest, CrewDataBundle } from '@/lib/server/domain'
+import type { AppBootstrapMode, AppBootstrapOptions, AppBootstrapPayload, AppMutationPayload, ClaimableGuest, CrewDataBundle } from '@/lib/server/domain'
 import type { RequestActor } from '@/lib/server/session'
 
 type DrinkTheme = Crew['drinkTheme']
@@ -1473,7 +1473,11 @@ export async function loadAppState(actor: RequestActor, options?: AppBootstrapOp
   return loadBackendState(actor, options)
 }
 
-export async function joinCrewAsGuest(name: string, inviteCode: string): Promise<AppMutationPayload> {
+export async function joinCrewAsGuest(
+  name: string,
+  inviteCode: string,
+  options?: { mode?: AppBootstrapMode }
+): Promise<AppMutationPayload> {
   const supabase = getServiceRoleClient()
   const cleanName = name.trim()
 
@@ -1553,7 +1557,13 @@ export async function joinCrewAsGuest(name: string, inviteCode: string): Promise
   session.guestIdentityId = guest.id
   session.membershipId = membership.id
 
-  const payload = await loadAppState({ kind: 'guest', session })
+  const payload = await loadAppState(
+    { kind: 'guest', session },
+    {
+      mode: options?.mode ?? 'full',
+      activeCrewId: crew.id,
+    }
+  )
   return { ...payload, session }
 }
 

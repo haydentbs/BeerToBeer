@@ -559,12 +559,9 @@ export default function BeerScoreApp() {
           return
         }
 
-        if (!restoreDevSession() && !restoreGuestSession()) {
-          applyAuthenticatedUser(null)
-        }
         setAuthNotice('Supabase session check timed out. You can still continue with Google or join as a guest.')
         setIsAuthReady(true)
-      }, 3000)
+      }, 10000)
 
       const {
         data: { session: restoredSession },
@@ -594,30 +591,10 @@ export default function BeerScoreApp() {
         return
       }
 
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-
-      if (!isMounted) {
-        return
-      }
-
-      if (userError || !user) {
-        clearAuthFallback()
-        setAuthNotice(userError?.message ?? 'Your session could not be verified. Please sign in again.')
-        await supabase.auth.signOut()
-        if (!restoreDevSession() && !restoreGuestSession()) {
-          applyAuthenticatedUser(null)
-        }
-        setIsAuthReady(true)
-        return
-      }
-
       if (!getPendingGuestClaimFlag()) {
         clearGuestSessionCookie()
       }
-      applyAuthenticatedUser(user)
+      applyAuthenticatedUser(restoredSession.user)
       setAuthNotice(null)
       clearAuthFallback()
       setIsAuthReady(true)
@@ -1077,8 +1054,13 @@ export default function BeerScoreApp() {
 
       setSession(payload.session)
       applyCommandPayload(payload)
-      if (payload.crewId) {
-        handleSelectCrew(payload.crewId)
+      const joinedCrewId = payload.crewId ?? payload.changed.snapshot?.crewId ?? null
+      clearSavedRouteState()
+      setIsRouteRestorePending(false)
+      setIsDataReady(true)
+      setLoadingCopy(null)
+      if (joinedCrewId) {
+        handleSelectCrew(joinedCrewId)
       }
       setAuthNotice(null)
       return { message: `Playing as ${payload.session.user.name}.` }

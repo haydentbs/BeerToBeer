@@ -46,6 +46,10 @@ function getInitials(value: string) {
   return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase()
 }
 
+function normalizeInviteCode(value: string | null | undefined) {
+  return (value ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
 function asDate(value: string | Date | null | undefined) {
   return value ? new Date(value) : new Date()
 }
@@ -521,7 +525,7 @@ async function buildSessionResponseForActor(actor: RequestActor): Promise<Sessio
       .eq('status', 'active'),
     supabase
       .from('crew_balances_v')
-      .select('crew_id, from_membership_id, to_membership_id, outstanding_drinks')
+      .select('crew_id, from_membership_id, to_membership_id, outstanding')
       .in('crew_id', context.crewIds),
     loadNotificationsForActor(context),
   ])
@@ -587,7 +591,7 @@ async function buildSessionResponseForActor(actor: RequestActor): Promise<Sessio
       return
     }
 
-    const amount = Number(row.outstanding_drinks ?? 0)
+    const amount = Number(row.outstanding ?? 0)
     crewNetPositions[row.crew_id] = crewNetPositions[row.crew_id] ?? 0
 
     if (row.from_membership_id === actorMembershipId) {
@@ -814,7 +818,7 @@ export async function fetchCrewFeedState(actor: RequestActor, crewId: string, af
 }
 
 export async function runGuestJoinCommand(name: string, crewCode: string): Promise<CommandResponse> {
-  const payload = await joinCrewAsGuest(name, crewCode)
+  const payload = await joinCrewAsGuest(name, crewCode, { mode: 'crew' })
   if (!payload.session) {
     throw new Error('Guest session could not be created.')
   }
@@ -823,9 +827,9 @@ export async function runGuestJoinCommand(name: string, crewCode: string): Promi
     kind: 'guest',
     session: payload.session,
   }
-  const normalizedCode = crewCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const normalizedCode = normalizeInviteCode(crewCode)
   const crewId =
-    payload.crews.find((crew: Crew) => crew.inviteCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === normalizedCode)?.id ??
+    payload.crews.find((crew: Crew) => normalizeInviteCode(crew.inviteCode) === normalizedCode)?.id ??
     payload.activeCrewId ??
     payload.crews[0]?.id ??
     null
