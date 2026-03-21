@@ -305,6 +305,31 @@ export default function BeerScoreApp() {
     }
   }
 
+  const handleRenameCrew = (name: string) => {
+    if (activeCrewId) {
+      setCrews((prev) => prev.map((crew) =>
+        crew.id === activeCrewId ? { ...crew, name } : crew
+      ))
+    }
+  }
+
+  const handleKickMember = (memberId: string) => {
+    if (activeCrewId) {
+      setCrews((prev) => prev.map((crew) =>
+        crew.id === activeCrewId
+          ? { ...crew, members: crew.members.filter((m) => m.id !== memberId) }
+          : crew
+      ))
+    }
+  }
+
+  const handleDeleteCrew = () => {
+    if (activeCrewId) {
+      setCrews((prev) => prev.filter((crew) => crew.id !== activeCrewId))
+      handleBackToHome()
+    }
+  }
+
   const handleWager = (_betId: string, _optionId: string, _drinks: number) => {
     // Mock UI only for now.
   }
@@ -426,7 +451,15 @@ export default function BeerScoreApp() {
         )}
 
         {activeTab === 'crew' && (
-          <CrewScreen crew={activeCrew} onStartNight={handleStartNight} onEndNight={handleEndNight} />
+          <CrewScreen
+                crew={activeCrew}
+                onStartNight={handleStartNight}
+                onEndNight={handleEndNight}
+                onRenameCrew={handleRenameCrew}
+                onKickMember={handleKickMember}
+                onDeleteCrew={handleDeleteCrew}
+                onLeaveCrew={handleLeaveCrew}
+              />
         )}
       </div>
 

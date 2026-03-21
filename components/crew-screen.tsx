@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Copy, Check, ExternalLink, Moon, Settings, Users, Plus, Crown } from 'lucide-react'
+import { Copy, Check, ExternalLink, Moon, Settings, Users, Plus, Crown, X, Pencil, UserMinus, Trash2, LogOut, ChevronRight, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { currentUser, type Crew } from '@/lib/store'
 
@@ -9,11 +9,22 @@ interface CrewScreenProps {
   crew: Crew
   onStartNight: () => void
   onEndNight: () => void
+  onRenameCrew: (name: string) => void
+  onKickMember: (memberId: string) => void
+  onDeleteCrew: () => void
+  onLeaveCrew: () => void
 }
 
-export function CrewScreen({ crew, onStartNight, onEndNight }: CrewScreenProps) {
+export function CrewScreen({ crew, onStartNight, onEndNight, onRenameCrew, onKickMember, onDeleteCrew, onLeaveCrew }: CrewScreenProps) {
   const [showInvite, setShowInvite] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showRename, setShowRename] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showKickConfirm, setShowKickConfirm] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState(crew.name)
   const [copied, setCopied] = useState(false)
+
+  const isCreator = crew.members[0]?.id === currentUser.id
 
   const handleCopyCode = async () => {
     await navigator.clipboard.writeText(crew.inviteCode)
@@ -30,7 +41,10 @@ export function CrewScreen({ crew, onStartNight, onEndNight }: CrewScreenProps) 
             <h2 className="text-xl font-bold text-card-foreground">{crew.name}</h2>
             <p className="text-sm text-muted-foreground">{crew.members.length} members</p>
           </div>
-          <button className="p-2 rounded-lg border-2 border-border hover:bg-surface transition-colors">
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-2 rounded-lg border-2 border-border hover:bg-surface transition-colors"
+          >
             <Settings className="h-5 w-5 text-muted-foreground" />
           </button>
         </div>
@@ -212,6 +226,192 @@ export function CrewScreen({ crew, onStartNight, onEndNight }: CrewScreenProps) 
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div
+            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            onClick={() => {
+              setShowSettings(false)
+              setShowRename(false)
+              setShowDeleteConfirm(false)
+              setShowKickConfirm(null)
+            }}
+          />
+          <div className="relative w-full max-w-sm max-h-[80vh] bg-card rounded-t-2xl sm:rounded-2xl border-3 border-border overflow-hidden flex flex-col">
+            {/* Settings Header */}
+            <div className="flex items-center justify-between p-4 border-b-2 border-border">
+              <h3 className="text-lg font-bold text-card-foreground">Crew Settings</h3>
+              <button
+                onClick={() => {
+                  setShowSettings(false)
+                  setShowRename(false)
+                  setShowDeleteConfirm(false)
+                  setShowKickConfirm(null)
+                }}
+                className="p-1.5 rounded-lg hover:bg-surface transition-colors"
+              >
+                <X className="h-5 w-5 text-card-foreground" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-2 overflow-y-auto flex-1">
+              {/* Rename Crew */}
+              {isCreator && (
+                showRename ? (
+                  <div className="p-3 rounded-xl bg-surface border-2 border-border space-y-3">
+                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wide">
+                      Crew Name
+                    </label>
+                    <input
+                      type="text"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-lg bg-card text-card-foreground font-semibold border-2 border-border focus:border-primary focus:outline-none transition-colors"
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowRename(false)}
+                        className="flex-1 py-2 rounded-lg border-2 border-border text-card-foreground font-semibold text-sm hover:bg-card transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (renameValue.trim() && renameValue.trim() !== crew.name) {
+                            onRenameCrew(renameValue.trim())
+                          }
+                          setShowRename(false)
+                        }}
+                        disabled={!renameValue.trim() || renameValue.trim() === crew.name}
+                        className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground font-semibold text-sm border-2 border-border disabled:opacity-50 transition-colors"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowRename(true)}
+                    className="w-full flex items-center gap-3 p-3.5 rounded-xl hover:bg-surface transition-colors"
+                  >
+                    <Pencil className="h-5 w-5 text-card-foreground" />
+                    <span className="flex-1 text-left font-semibold text-card-foreground">Rename Crew</span>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  </button>
+                )
+              )}
+
+              {/* Members Management (creator only) */}
+              {isCreator && crew.members.length > 1 && (
+                <div>
+                  <div className="px-3 pt-3 pb-1">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Manage Members</span>
+                  </div>
+                  {crew.members.filter(m => m.id !== currentUser.id).map((member) => (
+                    <div key={member.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-surface transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
+                          <span className="text-sm font-bold text-secondary-foreground">{member.initials}</span>
+                        </div>
+                        <span className="font-semibold text-card-foreground">{member.name}</span>
+                      </div>
+                      {showKickConfirm === member.id ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setShowKickConfirm(null)}
+                            className="px-3 py-1.5 rounded-lg border-2 border-border text-card-foreground text-xs font-semibold"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => {
+                              onKickMember(member.id)
+                              setShowKickConfirm(null)
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-loss text-white text-xs font-bold border-2 border-border"
+                          >
+                            Kick
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setShowKickConfirm(member.id)}
+                          className="p-2 rounded-lg hover:bg-loss/10 transition-colors"
+                        >
+                          <UserMinus className="h-4 w-4 text-muted-foreground hover:text-loss" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Divider */}
+              <div className="h-px bg-border mx-1" />
+
+              {/* Leave Crew (non-creators) */}
+              {!isCreator && (
+                <button
+                  onClick={() => {
+                    onLeaveCrew()
+                    setShowSettings(false)
+                  }}
+                  className="w-full flex items-center gap-3 p-3.5 rounded-xl hover:bg-surface transition-colors"
+                >
+                  <LogOut className="h-5 w-5 text-loss" />
+                  <span className="font-semibold text-loss">Leave Crew</span>
+                </button>
+              )}
+
+              {/* Delete Crew (creator only) */}
+              {isCreator && (
+                showDeleteConfirm ? (
+                  <div className="p-4 rounded-xl bg-loss/10 border-2 border-loss/40 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5 text-loss" />
+                      <span className="font-bold text-loss">Delete this crew?</span>
+                    </div>
+                    <p className="text-sm text-card-foreground">
+                      This will permanently delete <strong>{crew.name}</strong>, all bets, and all history. This cannot be undone.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowDeleteConfirm(false)}
+                        className="flex-1 py-2.5 rounded-lg border-2 border-border text-card-foreground font-semibold text-sm"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          onDeleteCrew()
+                          setShowSettings(false)
+                        }}
+                        className="flex-1 py-2.5 rounded-lg bg-loss text-white font-bold text-sm border-2 border-border"
+                      >
+                        Delete Forever
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="w-full flex items-center gap-3 p-3.5 rounded-xl hover:bg-loss/10 transition-colors"
+                  >
+                    <Trash2 className="h-5 w-5 text-loss" />
+                    <span className="font-semibold text-loss">Delete Crew</span>
+                  </button>
+                )
+              )}
+            </div>
+
+            {/* Safe area padding to clear bottom nav */}
+            <div className="h-20 sm:h-4 shrink-0" />
           </div>
         </div>
       )}
