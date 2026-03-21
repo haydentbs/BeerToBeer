@@ -10,6 +10,7 @@ import { TonightScreen } from '@/components/tonight-screen'
 import { LedgerScreen } from '@/components/ledger-screen'
 import { LeaderboardScreen } from '@/components/leaderboard-screen'
 import { CrewScreen } from '@/components/crew-screen'
+import { PendingInviteBanners } from '@/components/pending-invite-banners'
 import { CreateBetModal } from '@/components/create-bet-modal'
 import { ProfileModal } from '@/components/profile-modal'
 import { LoadingSpinner } from '@/components/loading-spinner'
@@ -1004,6 +1005,38 @@ export default function BeerScoreApp() {
     setSelectedBeerBombMatchId(matchId)
   }
 
+  const handleOpenNotification = useCallback((notification: Notification) => {
+    const targetCrewId =
+      notification.crewId ??
+      visibleCrews.find((crew) => crew.name === notification.crewName)?.id ??
+      null
+
+    if (!targetCrewId) {
+      return
+    }
+
+    const targetCrew = visibleCrews.find((crew) => crew.id === targetCrewId)
+    const targetTab: CrewTab =
+      notification.payload.betId || notification.payload.matchId || notification.payload.nightId
+        ? 'tonight'
+        : 'crew'
+
+    clearRestorableModalState()
+    setView('crew')
+    setActiveCrewId(targetCrewId)
+    setActiveTab(targetTab)
+    setActiveDrinkTheme(targetCrew?.currentNight?.drinkThemeOverride ?? targetCrew?.drinkTheme ?? 'beer')
+
+    if (notification.payload.matchId) {
+      setSelectedBeerBombMatchId(notification.payload.matchId)
+      return
+    }
+
+    if (notification.payload.betId) {
+      setSelectedBetId(notification.payload.betId)
+    }
+  }, [clearRestorableModalState, setActiveDrinkTheme, visibleCrews])
+
   // Shared wrapper: sets isMutating for any async mutation, surfaces errors to mutationError
   const runMutation = useCallback(async (fn: () => Promise<void>, errorFallback?: string) => {
     setIsMutating(true)
@@ -1333,6 +1366,9 @@ export default function BeerScoreApp() {
         onSelectCrew={handleSelectCrew}
         onCreateCrew={handleCreateCrew}
         onJoinCrew={handleJoinCrew}
+        notifications={notifications}
+        onMarkRead={() => { void handleMarkNotificationsRead() }}
+        onOpenNotification={handleOpenNotification}
         onSignOut={handleSignOut}
         isSigningOut={isSigningOut}
         isMutating={isMutating}
@@ -1373,10 +1409,25 @@ export default function BeerScoreApp() {
         onSignOut={handleSignOut}
         onOpenProfile={handleOpenProfile}
         onMarkNotificationsRead={() => { void handleMarkNotificationsRead() }}
+        onOpenNotification={handleOpenNotification}
         isSigningOut={isSigningOut}
       />
 
-      <div className="pt-4">
+      {activeCrew.currentNight && (
+        <div className="pt-4">
+          <PendingInviteBanners
+            night={activeCrew.currentNight}
+            onSelectBet={handleSelectBet}
+            onSelectBeerBombMatch={handleSelectBeerBombMatch}
+            onBetOfferAccept={handleBetOfferAccept}
+            onBetOfferDecline={handleBetOfferDecline}
+            onBeerBombAccept={handleBeerBombAccept}
+            onBeerBombDecline={handleBeerBombDecline}
+          />
+        </div>
+      )}
+
+      <div className={activeCrew.currentNight ? 'pt-3' : 'pt-4'}>
         {activeTab === 'tonight' && activeNightWithMiniGames && (
           <TonightScreen
             night={activeNightWithMiniGames}
@@ -1391,6 +1442,7 @@ export default function BeerScoreApp() {
             onBeerBombDecline={handleBeerBombDecline}
             onBeerBombCancel={handleBeerBombCancel}
             onBeerBombTurn={handleBeerBombTurn}
+            showPendingInviteBanners={false}
           />
         )}
 

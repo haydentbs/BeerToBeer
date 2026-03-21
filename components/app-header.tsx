@@ -22,6 +22,7 @@ interface AppHeaderProps {
   onSignOut?: () => void
   onOpenProfile?: () => void
   onMarkNotificationsRead?: () => void
+  onOpenNotification?: (notification: Notification) => void
   isSigningOut?: boolean
 }
 
@@ -39,6 +40,7 @@ export function AppHeader({
   onSignOut,
   onOpenProfile,
   onMarkNotificationsRead,
+  onOpenNotification,
   isSigningOut = false,
 }: AppHeaderProps) {
   const [showMenu, setShowMenu] = useState(false)
@@ -100,6 +102,7 @@ export function AppHeader({
               isOpen={showNotifications}
               onClose={() => setShowNotifications(false)}
               onMarkAllRead={() => onMarkNotificationsRead?.()}
+              onOpenNotification={onOpenNotification}
             />
           </div>
 

@@ -19,6 +19,7 @@ interface HomeScreenProps {
   onJoinCrew: (code: string) => Promise<boolean>
   notifications?: Notification[]
   onMarkRead?: () => void
+  onOpenNotification?: (notification: Notification) => void
   onSignOut?: () => void
   isSigningOut?: boolean
   isMutating?: boolean
@@ -37,6 +38,7 @@ export function HomeScreen({
   onJoinCrew,
   notifications = [],
   onMarkRead,
+  onOpenNotification,
   onSignOut,
   isSigningOut = false,
   isMutating = false,
@@ -120,6 +122,7 @@ export function HomeScreen({
                   isOpen={showNotifications}
                   onMarkAllRead={() => onMarkRead?.()}
                   onClose={() => setShowNotifications(false)}
+                  onOpenNotification={onOpenNotification}
                 />
               )}
             </div>

@@ -155,7 +155,7 @@ describe('TonightScreen', () => {
           createdAt: new Date('2026-03-21T18:06:00.000Z'),
           updatedAt: new Date('2026-03-21T18:06:00.000Z'),
           respondByAt: new Date(Date.now() + 120_000),
-        },
+        } as any,
       ],
     }
 
@@ -217,7 +217,7 @@ describe('TonightScreen', () => {
 
     renderTonightScreen({ night, currentUser })
 
-    expect(screen.getByText('Waiting On Response')).toBeInTheDocument()
+    expect(screen.getByText('Pending bet invite')).toBeInTheDocument()
     expect(screen.getByText(/waiting for Riley Rival to accept 1 drinks/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /accept & place/i })).not.toBeInTheDocument()
   })

@@ -1332,6 +1332,7 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
 
   const notifications: Notification[] = (notificationResult.data ?? []).map((notification: any) => ({
     id: notification.id,
+    crewId: notification.crew_id,
     type: notification.type,
     title: notification.title,
     message: notification.message,

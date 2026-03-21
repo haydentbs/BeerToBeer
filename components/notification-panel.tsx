@@ -2,7 +2,7 @@
 
 import { Trophy, Swords, Moon, HelpCircle, Users, Bell, Shield, CheckCircle2, UserPlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatRelativeTime } from '@/lib/store'
+import { formatRelativeTime, getNotificationActionLabel } from '@/lib/store'
 import type { Notification } from '@/lib/store'
 
 interface NotificationPanelProps {
@@ -10,6 +10,7 @@ interface NotificationPanelProps {
   isOpen: boolean
   onClose: () => void
   onMarkAllRead: () => void
+  onOpenNotification?: (notification: Notification) => void
 }
 
 const notificationIcons: Record<Notification['type'], React.ElementType> = {
@@ -31,6 +32,7 @@ export function NotificationPanel({
   isOpen,
   onClose,
   onMarkAllRead,
+  onOpenNotification,
 }: NotificationPanelProps) {
   if (!isOpen) return null
 
@@ -61,11 +63,17 @@ export function NotificationPanel({
           ) : (
             notifications.map((notification) => {
               const Icon = notificationIcons[notification.type] ?? HelpCircle
+              const actionLabel = getNotificationActionLabel(notification)
               return (
-                <div
+                <button
                   key={notification.id}
+                  type="button"
+                  onClick={() => {
+                    onOpenNotification?.(notification)
+                    onClose()
+                  }}
                   className={cn(
-                    'flex items-start gap-3 px-4 py-3 border-b border-border last:border-b-0 transition-colors',
+                    'flex w-full items-start gap-3 px-4 py-3 border-b border-border text-left last:border-b-0 transition-colors hover:bg-surface/60',
                     !notification.read && 'bg-card/80 bg-[oklch(0.92_0.02_80)]'
                   )}
                 >
@@ -96,8 +104,11 @@ export function NotificationPanel({
                       )}
                       <span>{formatRelativeTime(notification.timestamp)}</span>
                     </div>
+                    <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-primary">
+                      {actionLabel}
+                    </p>
                   </div>
-                </div>
+                </button>
               )
             })
           )}

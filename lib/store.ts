@@ -923,6 +923,7 @@ export interface NotificationPayload {
 
 export interface Notification {
   id: string
+  crewId?: string
   type:
     | 'bet_created'
     | 'bet_resolved'
