@@ -1,6 +1,7 @@
 'use client'
 
-import { X, Trophy, Target, Flame, TrendingUp, Beer, Users, LogIn, Sun, Moon, Monitor, EyeOff, Eye } from 'lucide-react'
+import { useState } from 'react'
+import { X, Trophy, Target, Flame, TrendingUp, Beer, Users, LogIn, Sun, Moon, Monitor, EyeOff, Eye, Pencil, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from './theme-provider'
 import type { AppMode } from '@/lib/themes'
@@ -35,6 +36,7 @@ interface ProfileModalProps {
   onSignOut?: () => void
   onFinishAccount?: () => void
   onClaimGuest?: (guestMembershipId: string) => void
+  onUpdateName?: (name: string) => void
   isSigningOut?: boolean
 }
 
@@ -52,9 +54,12 @@ export function ProfileModal({
   onSignOut,
   onFinishAccount,
   onClaimGuest,
+  onUpdateName,
   isSigningOut = false,
 }: ProfileModalProps) {
   const { mode, setMode, drinkEmoji, themesDisabled, setThemesDisabled } = useTheme()
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [editName, setEditName] = useState(userName)
 
   const modeOptions: { value: AppMode; icon: typeof Sun; label: string }[] = [
     { value: 'light', icon: Sun, label: 'Light' },
@@ -81,7 +86,53 @@ export function ProfileModal({
                 <span className="text-xl font-bold text-primary-foreground">{userInitials}</span>
               </div>
               <div>
-                <h2 className="text-xl font-bold text-card-foreground">{userName}</h2>
+                {isEditingName ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="text-lg font-bold text-card-foreground bg-card border-2 border-border rounded-lg px-2 py-1 focus:border-primary focus:outline-none w-36"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && editName.trim()) {
+                          onUpdateName?.(editName.trim())
+                          setIsEditingName(false)
+                        }
+                        if (e.key === 'Escape') {
+                          setEditName(userName)
+                          setIsEditingName(false)
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        if (editName.trim()) {
+                          onUpdateName?.(editName.trim())
+                          setIsEditingName(false)
+                        }
+                      }}
+                      className="p-1 rounded-lg hover:bg-surface transition-colors"
+                    >
+                      <Check className="h-4 w-4 text-win" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-bold text-card-foreground">{userName}</h2>
+                    {onUpdateName && (
+                      <button
+                        onClick={() => {
+                          setEditName(userName)
+                          setIsEditingName(true)
+                        }}
+                        className="p-1 rounded-lg hover:bg-surface transition-colors"
+                      >
+                        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                      </button>
+                    )}
+                  </div>
+                )}
                 {userEmail && (
                   <p className="text-sm text-muted-foreground">{userEmail}</p>
                 )}

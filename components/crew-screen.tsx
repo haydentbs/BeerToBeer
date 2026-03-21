@@ -11,7 +11,7 @@ interface CrewScreenProps {
   crew: Crew
   currentUserId: string
   currentMembershipId?: string | null
-  onStartNight: (nightThemeOverride?: DrinkTheme) => void
+  onStartNight: (nightName?: string, nightThemeOverride?: DrinkTheme) => void
   onLeaveNight: () => void
   onRejoinNight: () => void
   onRenameCrew: (name: string) => void
@@ -31,6 +31,7 @@ export function CrewScreen({ crew, currentUserId, currentMembershipId = null, on
   const [renameValue, setRenameValue] = useState(crew.name)
   const [copied, setCopied] = useState(false)
   const [showStartNight, setShowStartNight] = useState(false)
+  const [nightName, setNightName] = useState('')
   const [nightThemeOverride, setNightThemeOverride] = useState<DrinkTheme | null>(null)
   const { drinkEmoji, setActiveDrinkTheme } = useTheme()
 
@@ -137,6 +138,7 @@ export function CrewScreen({ crew, currentUserId, currentMembershipId = null, on
         })() : (
           <button
             onClick={() => {
+              setNightName('')
               setNightThemeOverride(null)
               setShowStartNight(true)
             }}
@@ -684,6 +686,21 @@ export function CrewScreen({ crew, currentUserId, currentMembershipId = null, on
               </button>
             </div>
 
+            {/* Night Name */}
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">
+                Night Name
+              </label>
+              <input
+                type="text"
+                value={nightName}
+                onChange={(e) => setNightName(e.target.value)}
+                placeholder={`Tonight at ${crew.name}`}
+                className="w-full px-4 py-3 rounded-xl bg-card text-card-foreground font-semibold border-2 border-border focus:border-primary focus:outline-none transition-colors"
+                autoFocus
+              />
+            </div>
+
             {/* Night Theme Override */}
             <div className="mb-4">
               <div className="flex items-center gap-2 mb-2">
@@ -738,7 +755,7 @@ export function CrewScreen({ crew, currentUserId, currentMembershipId = null, on
                 if (nightThemeOverride) {
                   setActiveDrinkTheme(nightThemeOverride)
                 }
-                onStartNight(nightThemeOverride ?? undefined)
+                onStartNight(nightName || undefined, nightThemeOverride ?? undefined)
                 setShowStartNight(false)
               }}
               className="w-full p-4 rounded-xl bg-primary text-primary-foreground font-display font-normal text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex items-center justify-center gap-2"

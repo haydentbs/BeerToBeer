@@ -47,6 +47,20 @@ import type { AppMutationPayload, ClaimableGuest } from '@/lib/server/domain'
 
 type AppView = 'home' | 'crew'
 const PENDING_GUEST_CLAIM_KEY = 'beerscore_pending_guest_claim'
+const ACTIVE_CREW_KEY = 'beerscore_active_crew'
+const ACTIVE_TAB_KEY = 'beerscore_active_tab'
+
+function getSavedCrewId(): string | null {
+  if (typeof window === 'undefined') return null
+  return window.localStorage.getItem(ACTIVE_CREW_KEY)
+}
+
+function getSavedTab(): 'tonight' | 'ledger' | 'leaderboard' | 'crew' {
+  if (typeof window === 'undefined') return 'tonight'
+  const tab = window.localStorage.getItem(ACTIVE_TAB_KEY)
+  if (tab === 'tonight' || tab === 'ledger' || tab === 'leaderboard' || tab === 'crew') return tab
+  return 'tonight'
+}
 
 function getPendingGuestClaimFlag() {
   if (typeof window === 'undefined') {
@@ -96,9 +110,9 @@ interface CreateMiniGameInput {
 
 export default function BeerScoreApp() {
   const [session, setSession] = useState<AppSession | null>(null)
-  const [view, setView] = useState<AppView>('home')
-  const [activeCrewId, setActiveCrewId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'tonight' | 'ledger' | 'leaderboard' | 'crew'>('tonight')
+  const [view, setView] = useState<AppView>(() => getSavedCrewId() ? 'crew' : 'home')
+  const [activeCrewId, setActiveCrewId] = useState<string | null>(() => getSavedCrewId())
+  const [activeTab, setActiveTab] = useState<'tonight' | 'ledger' | 'leaderboard' | 'crew'>(() => getSavedTab())
   const [showCreateBet, setShowCreateBet] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
   const [crews, setCrews] = useState<Crew[]>([])
@@ -109,6 +123,8 @@ export default function BeerScoreApp() {
   const [isDataReady, setIsDataReady] = useState(false)
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const [isMutating, setIsMutating] = useState(false)
+  const [mutationError, setMutationError] = useState<string | null>(null)
   const [claimingGuestMembershipId, setClaimingGuestMembershipId] = useState<string | null>(null)
   const [authNotice, setAuthNotice] = useState<string | null>(null)
   const supabaseConfigured = isSupabaseConfigured()
@@ -461,6 +477,25 @@ export default function BeerScoreApp() {
     }
   }, [isDataReady, session])
 
+  // Persist active crew and tab to localStorage so refreshes restore the view
+  useEffect(() => {
+    if (activeCrewId) {
+      window.localStorage.setItem(ACTIVE_CREW_KEY, activeCrewId)
+    } else {
+      window.localStorage.removeItem(ACTIVE_CREW_KEY)
+    }
+    window.localStorage.setItem(ACTIVE_TAB_KEY, activeTab)
+  }, [activeCrewId, activeTab])
+
+  // If we restored a crew from localStorage but it's not in the user's crew list, reset to home
+  useEffect(() => {
+    if (isDataReady && activeCrewId && !crews.find((c) => c.id === activeCrewId)) {
+      setActiveCrewId(null)
+      setView('home')
+      setActiveDrinkTheme('beer')
+    }
+  }, [isDataReady, activeCrewId, crews, setActiveDrinkTheme])
+
   const crewNetPositions = useMemo(() => {
     const positions: Record<string, number> = {}
     crews.forEach((crew) => {
@@ -568,6 +603,15 @@ export default function BeerScoreApp() {
     await handleGoogleAuth({ preserveGuestSession: true })
   }
 
+  const handleUpdateName = async (name: string) => {
+    try {
+      const payload = await mutateApp('updateProfile', { name })
+      applyAppPayload(payload)
+    } catch {
+      // Best-effort name update
+    }
+  }
+
   const handleClaimGuest = async (guestMembershipId: string) => {
     setClaimingGuestMembershipId(guestMembershipId)
 
@@ -601,19 +645,35 @@ export default function BeerScoreApp() {
     setActiveDrinkTheme('beer')
   }
 
-  const handleCreateCrew = (name: string) => {
-    void mutateApp('createCrew', { name }).then(applyAppPayload)
+  const handleCreateCrew = async (name: string) => {
+    setIsMutating(true)
+    setMutationError(null)
+    try {
+      const payload = await mutateApp('createCrew', { name })
+      applyAppPayload(payload)
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Could not create crew.')
+    } finally {
+      setIsMutating(false)
+    }
   }
 
-  const handleJoinCrew = (code: string) => {
-    void mutateApp('joinCrew', { code }).then((payload) => {
+  const handleJoinCrew = async (code: string) => {
+    setIsMutating(true)
+    setMutationError(null)
+    try {
+      const payload = await mutateApp('joinCrew', { code })
       applyAppPayload(payload)
       const normalizedCode = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
       const joinedCrew = payload.crews.find((crew) => crew.inviteCode === normalizedCode)
       if (joinedCrew) {
         handleSelectCrew(joinedCrew.id)
       }
-    })
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Crew code not found.')
+    } finally {
+      setIsMutating(false)
+    }
   }
 
   const handleLeaveCrew = () => {
@@ -762,20 +822,25 @@ export default function BeerScoreApp() {
     // Mock UI only for now.
   }
 
-  const handleStartNight = (nightThemeOverride?: DrinkTheme) => {
+  const handleStartNight = async (nightName?: string, nightThemeOverride?: DrinkTheme) => {
     if (!activeCrewId) {
       return
     }
 
-    void mutateApp('startNight', {
-      crewId: activeCrewId,
-      name: activeCrew ? `Tonight at ${activeCrew.name}` : 'Tonight',
-      drinkThemeOverride: nightThemeOverride,
-    }).then(applyAppPayload)
+    setIsMutating(true)
+    try {
+      const payload = await mutateApp('startNight', {
+        crewId: activeCrewId,
+        name: nightName?.trim() || (activeCrew ? `Tonight at ${activeCrew.name}` : 'Tonight'),
+        drinkThemeOverride: nightThemeOverride,
+      })
+      applyAppPayload(payload)
 
-    // Apply night theme override if set
-    if (nightThemeOverride) {
-      setActiveDrinkTheme(nightThemeOverride)
+      if (nightThemeOverride) {
+        setActiveDrinkTheme(nightThemeOverride)
+      }
+    } finally {
+      setIsMutating(false)
     }
   }
 
@@ -828,6 +893,9 @@ export default function BeerScoreApp() {
         onJoinCrew={handleJoinCrew}
         onSignOut={handleSignOut}
         isSigningOut={isSigningOut}
+        isMutating={isMutating}
+        mutationError={mutationError}
+        onDismissError={() => setMutationError(null)}
       />
     )
   }
@@ -877,7 +945,7 @@ export default function BeerScoreApp() {
                 Start a night to begin creating bets and tracking the drinks ledger.
               </p>
               <button
-                onClick={() => handleStartNight()}
+                onClick={() => setActiveTab('crew')}
                 className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-display font-normal border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all"
               >
                 Start tonight's tab
@@ -960,8 +1028,15 @@ export default function BeerScoreApp() {
         onSignOut={handleSignOut}
         onFinishAccount={session.isGuest ? handleFinishAccount : undefined}
         onClaimGuest={!session.isGuest ? handleClaimGuest : undefined}
+        onUpdateName={handleUpdateName}
         isSigningOut={isSigningOut}
       />
+
+      {isMutating && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/60 backdrop-blur-sm">
+          <LoadingSpinner message="One sec…" />
+        </div>
+      )}
     </main>
     </CurrentUserProvider>
   )

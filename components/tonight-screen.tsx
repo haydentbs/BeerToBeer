@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Bomb, Sparkles } from 'lucide-react'
+import { Bomb } from 'lucide-react'
 import { BetCardCompact } from './bet-card-compact'
 import { BetDetailModal } from './bet-detail-modal'
 import {
@@ -135,26 +135,26 @@ export function TonightScreen({
           </div>
         </div>
 
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-foreground">
-              <Bomb className="h-4 w-4 text-primary" />
-              Beer Bomb
-            </h2>
-            <div className="flex items-center gap-2">
-              {DEV_SOLO_BEER_BOMB_ENABLED && (
-                <button
-                  onClick={handleStartSoloBeerBomb}
-                  className="rounded-full border-2 border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-primary transition-colors hover:bg-primary/15"
-                >
-                  Solo test
-                </button>
-              )}
-              <span className="text-xs text-muted-foreground">{miniGameMatches.length} challenges</span>
+        {(miniGameMatches.length > 0 || DEV_SOLO_BEER_BOMB_ENABLED) && (
+          <section>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-foreground">
+                <Bomb className="h-4 w-4 text-primary" />
+                Beer Bomb
+              </h2>
+              <div className="flex items-center gap-2">
+                {DEV_SOLO_BEER_BOMB_ENABLED && (
+                  <button
+                    onClick={handleStartSoloBeerBomb}
+                    className="rounded-full border-2 border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-primary transition-colors hover:bg-primary/15"
+                  >
+                    Solo test
+                  </button>
+                )}
+                <span className="text-xs text-muted-foreground">{miniGameMatches.length} challenges</span>
+              </div>
             </div>
-          </div>
 
-          {miniGameMatches.length > 0 ? (
             <div className="space-y-2">
               {miniGameMatches.map((match) => (
                 <BeerBombMatchCard
@@ -166,28 +166,8 @@ export function TonightScreen({
                 />
               ))}
             </div>
-          ) : (
-            <div className="relative overflow-hidden rounded-2xl border-3 border-border bg-surface p-4">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,207,111,0.15),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(89,212,255,0.12),transparent_30%)]" />
-              <div className="relative flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-primary">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    First mini-game
-                  </div>
-                  <h3 className="text-lg font-bold text-card-foreground">Beer Bomb challenge lane</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Tap beers in a line until one turns out to be the bomb. Use the plus button to challenge someone and lock in the wager.
-                  </p>
-                </div>
-                <div className="rounded-xl border-2 border-border bg-card px-3 py-2 text-center">
-                  <div className="text-2xl">{drinkEmoji}</div>
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ready</div>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
+          </section>
+        )}
 
         {activeBets.length > 0 && (
           <section>

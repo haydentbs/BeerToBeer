@@ -20,6 +20,9 @@ interface HomeScreenProps {
   onMarkRead?: () => void
   onSignOut?: () => void
   isSigningOut?: boolean
+  isMutating?: boolean
+  mutationError?: string | null
+  onDismissError?: () => void
 }
 
 export function HomeScreen({
@@ -34,6 +37,9 @@ export function HomeScreen({
   onMarkRead,
   onSignOut,
   isSigningOut = false,
+  isMutating = false,
+  mutationError = null,
+  onDismissError,
 }: HomeScreenProps) {
   const [showAction, setShowAction] = useState<'none' | 'create' | 'join'>('none')
   const [newCrewName, setNewCrewName] = useState('')
@@ -405,7 +411,7 @@ export function HomeScreen({
                   value={newCrewName}
                   onChange={(e) => setNewCrewName(e.target.value)}
                   placeholder="The Usual Suspects"
-                  className="w-full px-4 py-3 rounded-xl bg-surface text-card-foreground font-semibold border-2 border-border focus:border-primary focus:outline-none transition-colors text-lg"
+                  className="w-full px-4 py-3 rounded-xl bg-card text-card-foreground font-semibold border-2 border-border focus:border-primary focus:outline-none transition-colors text-lg"
                   autoFocus
                 />
               </div>
@@ -420,11 +426,11 @@ export function HomeScreen({
                 </button>
                 <button
                   type="submit"
-                  disabled={!newCrewName.trim()}
+                  disabled={!newCrewName.trim() || isMutating}
                   className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-display font-normal border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
                 >
-                  Create
-                  <ArrowRight className="w-4 h-4" />
+                  {isMutating ? 'Creating…' : 'Create'}
+                  {!isMutating && <ArrowRight className="w-4 h-4" />}
                 </button>
               </div>
             </form>
@@ -449,6 +455,17 @@ export function HomeScreen({
                 Enter the invite code from your friend.
               </p>
 
+              {mutationError && (
+                <div className="p-3 rounded-xl bg-loss/10 border-2 border-loss/30 flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-loss">{mutationError}</p>
+                  {onDismissError && (
+                    <button onClick={onDismissError} className="text-xs text-loss/70 font-semibold shrink-0">
+                      Dismiss
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">
                   Invite Code
@@ -456,29 +473,36 @@ export function HomeScreen({
                 <input
                   type="text"
                   value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    setJoinCode(e.target.value.toUpperCase())
+                    onDismissError?.()
+                  }}
                   placeholder="DEMO1234"
                   maxLength={12}
-                  className="w-full px-4 py-3 rounded-xl bg-surface text-card-foreground font-mono font-bold border-2 border-border focus:border-primary focus:outline-none transition-colors text-lg text-center tracking-widest uppercase"
+                  className="w-full px-4 py-3 rounded-xl bg-card text-card-foreground font-mono font-bold border-2 border-border focus:border-primary focus:outline-none transition-colors text-lg text-center tracking-widest uppercase"
                   autoFocus
                 />
+                <p className="text-xs text-muted-foreground mt-1.5 text-center">Dashes and spaces are ignored</p>
               </div>
 
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowAction('none')}
+                  onClick={() => {
+                    setShowAction('none')
+                    onDismissError?.()
+                  }}
                   className="flex-1 py-3 rounded-xl border-2 border-border text-card-foreground font-semibold hover:bg-surface transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={!joinCode.trim()}
+                  disabled={!joinCode.trim() || isMutating}
                   className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-display font-normal border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
                 >
-                  Join
-                  <ArrowRight className="w-4 h-4" />
+                  {isMutating ? 'Joining…' : 'Join'}
+                  {!isMutating && <ArrowRight className="w-4 h-4" />}
                 </button>
               </div>
             </form>
