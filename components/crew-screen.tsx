@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { Copy, Check, ExternalLink, Moon, Settings, Users, Plus, Crown, X, Pencil, UserMinus, Trash2, LogOut, ChevronRight, AlertTriangle, Clock, Trophy, Swords, HelpCircle, Beer, Palette } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Copy, Check, ExternalLink, Moon, Settings, Users, Plus, Crown, X, Pencil, UserMinus, Trash2, LogOut, ChevronRight, AlertTriangle, Clock, Trophy, Swords, HelpCircle, Beer, Palette, QrCode, Share2 } from 'lucide-react'
+import QRCode from 'qrcode'
 import { cn } from '@/lib/utils'
 import { getCrewMemberMembershipId, isCrewCreator, type Crew, type PastNight } from '@/lib/store'
 import { DRINK_THEMES, type DrinkTheme } from '@/lib/themes'
@@ -246,48 +247,12 @@ export function CrewScreen({ crew, currentUserId, currentMembershipId = null, is
 
       {/* Invite Modal */}
       {showInvite && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-            onClick={() => setShowInvite(false)}
-          />
-          <div className="relative w-full max-w-sm bg-card rounded-2xl border-3 border-border p-6">
-            <h3 className="text-lg font-bold text-card-foreground mb-4">Invite to Crew</h3>
-
-            <div className="p-4 rounded-xl bg-surface border-2 border-border mb-4">
-              <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
-                Invite Code
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-mono font-bold text-xl text-primary">{crew.inviteCode}</span>
-                <button
-                  onClick={handleCopyCode}
-                  className="p-2 rounded-lg border-2 border-border hover:bg-card transition-colors"
-                >
-                  {copied ? (
-                    <Check className="h-5 w-5 text-win" />
-                  ) : (
-                    <Copy className="h-5 w-5 text-foreground" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <button
-              className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-display font-normal border-2 border-border flex items-center justify-center gap-2"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Share Link
-            </button>
-
-            <button
-              onClick={() => setShowInvite(false)}
-              className="w-full mt-3 py-2 text-muted-foreground font-semibold"
-            >
-              Close
-            </button>
-          </div>
-        </div>
+        <InviteModal
+          inviteCode={crew.inviteCode}
+          copied={copied}
+          onCopyCode={handleCopyCode}
+          onClose={() => setShowInvite(false)}
+        />
       )}
 
       {/* Past Nights */}
@@ -773,6 +738,117 @@ export function CrewScreen({ crew, currentUserId, currentMembershipId = null, is
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Invite Modal with QR code
+// ---------------------------------------------------------------------------
+
+function InviteModal({
+  inviteCode,
+  copied,
+  onCopyCode,
+  onClose,
+}: {
+  inviteCode: string
+  copied: boolean
+  onCopyCode: () => void
+  onClose: () => void
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
+
+  const joinUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/join/${inviteCode}`
+    : `/join/${inviteCode}`
+
+  useEffect(() => {
+    if (!canvasRef.current) return
+    QRCode.toCanvas(canvasRef.current, joinUrl, {
+      width: 200,
+      margin: 2,
+      color: { dark: '#1a1614', light: '#ffffff' },
+    })
+  }, [joinUrl])
+
+  const handleShareLink = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Join my BeerScore crew',
+          text: `Join my crew on BeerScore! Use code ${inviteCode} or tap the link:`,
+          url: joinUrl,
+        })
+        return
+      } catch {
+        // User cancelled or share failed — fall through to copy
+      }
+    }
+
+    await navigator.clipboard.writeText(joinUrl)
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 2000)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div
+        className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative w-full max-w-sm bg-card rounded-2xl border-3 border-border p-6">
+        <h3 className="text-lg font-bold text-card-foreground mb-4">Invite to Crew</h3>
+
+        <div className="p-4 rounded-xl bg-surface border-2 border-border mb-4">
+          <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+            Invite Code
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="font-mono font-bold text-xl text-primary">{inviteCode}</span>
+            <button
+              onClick={onCopyCode}
+              className="p-2 rounded-lg border-2 border-border hover:bg-card transition-colors"
+            >
+              {copied ? (
+                <Check className="h-5 w-5 text-win" />
+              ) : (
+                <Copy className="h-5 w-5 text-foreground" />
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* QR Code */}
+        <div className="flex justify-center mb-4 p-4 rounded-xl bg-white">
+          <canvas ref={canvasRef} />
+        </div>
+
+        <button
+          onClick={() => void handleShareLink()}
+          className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-display font-normal border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all flex items-center justify-center gap-2"
+        >
+          {linkCopied ? (
+            <>
+              <Check className="h-4 w-4" />
+              Link Copied
+            </>
+          ) : (
+            <>
+              <Share2 className="h-4 w-4" />
+              Share Invite Link
+            </>
+          )}
+        </button>
+
+        <button
+          onClick={onClose}
+          className="w-full mt-3 py-2 text-muted-foreground font-semibold"
+        >
+          Close
+        </button>
+      </div>
     </div>
   )
 }
