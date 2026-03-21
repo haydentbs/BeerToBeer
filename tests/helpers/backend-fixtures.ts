@@ -43,40 +43,19 @@ function loadDotEnv() {
 
 loadDotEnv()
 
-const DELETE_PLANS: Array<{ table: string; column?: string }> = [
-  { table: 'mini_game_match_events' },
-  { table: 'mini_game_matches' },
-  { table: 'bet_status_events' },
-  { table: 'settlement_confirmations' },
-  { table: 'settlement_requests' },
-  { table: 'ledger_events' },
-  { table: 'bet_member_outcomes' },
-  { table: 'dispute_votes' },
-  { table: 'disputes' },
-  { table: 'bet_comments' },
-  { table: 'wagers' },
-  { table: 'bet_options' },
-  { table: 'bets' },
-  { table: 'night_participants' },
-  { table: 'nights' },
-  { table: 'notifications' },
-  { table: 'notification_preferences' },
-  { table: 'crew_invite_redemptions' },
-  { table: 'crew_invites' },
-  { table: 'crew_join_requests' },
-  { table: 'crew_settings', column: 'crew_id' },
+const RESET_ROOT_DELETE_PLANS: Array<{ table: string; column?: string }> = [
+  // Most test data hangs off these roots via `on delete cascade`, so deleting
+  // them avoids dozens of slow sequential PostgREST delete round trips.
   { table: 'audit_log' },
-  { table: 'crew_memberships' },
-  { table: 'guest_identities' },
-  { table: 'profile_preferences', column: 'profile_id' },
   { table: 'crews' },
+  { table: 'guest_identities' },
   { table: 'profiles' },
 ]
 
 export async function resetDatabase() {
   const supabase = getServiceRoleClient()
 
-  for (const plan of DELETE_PLANS) {
+  for (const plan of RESET_ROOT_DELETE_PLANS) {
     const column = plan.column ?? 'id'
     const { error } = await supabase.from(plan.table).delete().not(column, 'is', null)
     if (error) {
