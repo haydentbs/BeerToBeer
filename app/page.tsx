@@ -434,47 +434,64 @@ export default function BeerScoreApp() {
     )
   }
 
-  // Called when a user taps "I'm Out" — in a real implementation this marks the user
-  // as having left. When all participants leave, the night auto-closes.
+  // Remove current user from night participants. If they're the last one, close the night.
   const handleLeaveNight = () => {
-    if (!activeCrewId) {
-      return
-    }
+    if (!activeCrewId || !session) return
 
-    // For now, leaving = ending the night (mock: single user)
     setCrews((prev) =>
       prev.map((crew) => {
-        if (crew.id !== activeCrewId || !crew.currentNight) {
-          return crew
+        if (crew.id !== activeCrewId || !crew.currentNight) return crew
+
+        const remaining = crew.currentNight.participants.filter((p) => p.id !== session.user.id)
+
+        if (remaining.length === 0) {
+          // Last person out — close the night
+          return {
+            ...crew,
+            currentNight: undefined,
+            pastNights: [
+              {
+                id: `past-${Date.now()}`,
+                name: crew.currentNight.name,
+                date: new Date().toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }),
+                bets: crew.currentNight.bets.length,
+                winner: 'TBD',
+                duration: '—',
+                betDetails: [],
+                leaderboard: [],
+              },
+              ...crew.pastNights,
+            ],
+          }
         }
 
+        // Others still in — just remove this user from participants
         return {
           ...crew,
-          currentNight: undefined,
-          pastNights: [
-            {
-              id: `past-${Date.now()}`,
-              name: crew.currentNight.name,
-              date: new Date().toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }),
-              bets: crew.currentNight.bets.length,
-              winner: 'TBD',
-              duration: '—',
-              betDetails: [],
-              leaderboard: [],
-            },
-            ...crew.pastNights,
-          ],
+          currentNight: { ...crew.currentNight, participants: remaining },
         }
       })
     )
+  }
 
-    setCrewDataById((prev) => ({
-      ...prev,
-      [activeCrewId]: {
-        ...(prev[activeCrewId] ?? { tonightLedger: [], allTimeLedger: [], leaderboard: [] }),
-        tonightLedger: [],
-      },
-    }))
+  // Rejoin an active night
+  const handleRejoinNight = () => {
+    if (!activeCrewId || !session) return
+
+    setCrews((prev) =>
+      prev.map((crew) => {
+        if (crew.id !== activeCrewId || !crew.currentNight) return crew
+        const alreadyIn = crew.currentNight.participants.some((p) => p.id === session.user.id)
+        if (alreadyIn) return crew
+        return {
+          ...crew,
+          currentNight: {
+            ...crew.currentNight,
+            participants: [...crew.currentNight.participants, session.user],
+          },
+        }
+      })
+    )
   }
 
   useEffect(() => {
@@ -614,8 +631,10 @@ export default function BeerScoreApp() {
         {activeTab === 'crew' && (
           <CrewScreen
                 crew={activeCrew}
+                currentUserId={session.user.id}
                 onStartNight={handleStartNight}
                 onLeaveNight={handleLeaveNight}
+                onRejoinNight={handleRejoinNight}
                 onRenameCrew={handleRenameCrew}
                 onKickMember={handleKickMember}
                 onDeleteCrew={handleDeleteCrew}

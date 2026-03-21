@@ -7,15 +7,17 @@ import { currentUser, type Crew, type PastNight } from '@/lib/store'
 
 interface CrewScreenProps {
   crew: Crew
+  currentUserId: string
   onStartNight: () => void
   onLeaveNight: () => void
+  onRejoinNight: () => void
   onRenameCrew: (name: string) => void
   onKickMember: (memberId: string) => void
   onDeleteCrew: () => void
   onLeaveCrew: () => void
 }
 
-export function CrewScreen({ crew, onStartNight, onLeaveNight, onRenameCrew, onKickMember, onDeleteCrew, onLeaveCrew }: CrewScreenProps) {
+export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, onRejoinNight, onRenameCrew, onKickMember, onDeleteCrew, onLeaveCrew }: CrewScreenProps) {
   const [showInvite, setShowInvite] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showRename, setShowRename] = useState(false)
@@ -71,26 +73,55 @@ export function CrewScreen({ crew, onStartNight, onLeaveNight, onRenameCrew, onK
         </div>
 
         {/* Night Status */}
-        {crew.currentNight ? (
-          <div className="p-4 rounded-xl bg-win/10 border-2 border-win">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-win animate-pulse" />
-                  <span className="font-semibold text-win">Night Active</span>
+        {crew.currentNight ? (() => {
+          const isIn = crew.currentNight.participants.some((p) => p.id === currentUserId)
+          const count = crew.currentNight.participants.length
+
+          if (isIn) {
+            return (
+              <div className="p-4 rounded-xl bg-win/10 border-2 border-win">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-win animate-pulse" />
+                      <span className="font-semibold text-win">Night Active</span>
+                    </div>
+                    <p className="text-sm text-card-foreground mt-1">{crew.currentNight.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{count} {count === 1 ? 'person' : 'people'} still in</p>
+                  </div>
+                  <button
+                    onClick={onLeaveNight}
+                    className="px-4 py-2 rounded-lg border-2 border-border bg-card text-card-foreground font-semibold text-sm hover:bg-surface transition-colors"
+                  >
+                    I&apos;m Out
+                  </button>
                 </div>
-                <p className="text-sm text-card-foreground mt-1">{crew.currentNight.name}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Auto-closes after inactivity</p>
               </div>
-              <button
-                onClick={onLeaveNight}
-                className="px-4 py-2 rounded-lg border-2 border-border bg-card text-card-foreground font-semibold text-sm hover:bg-surface transition-colors"
-              >
-                I&apos;m Out
-              </button>
+            )
+          }
+
+          return (
+            <div className="p-4 rounded-xl bg-surface border-2 border-border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-win animate-pulse" />
+                    <span className="font-semibold text-card-foreground">{crew.currentNight.name}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {count} {count === 1 ? 'person' : 'people'} still going
+                  </p>
+                </div>
+                <button
+                  onClick={onRejoinNight}
+                  className="px-4 py-2 rounded-lg border-2 border-primary text-primary font-semibold text-sm hover:bg-primary/10 transition-colors"
+                >
+                  Rejoin
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
+          )
+        })() : (
           <button
             onClick={onStartNight}
             className="w-full p-4 rounded-xl bg-primary text-primary-foreground font-bold text-lg border-3 border-border shadow-[4px_4px_0px_0px_var(--border)] active:shadow-none active:translate-x-[4px] active:translate-y-[4px] transition-all flex items-center justify-center gap-2"
