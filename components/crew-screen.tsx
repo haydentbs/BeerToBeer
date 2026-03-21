@@ -355,7 +355,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
 
               {/* Drink Theme Picker (creator only) */}
               {isCreator && (
-                <div className="p-3 rounded-xl bg-surface border-2 border-border space-y-2">
+                <div className="p-3 rounded-xl bg-card border-2 border-border space-y-2">
                   <div className="flex items-center gap-2 px-1">
                     <Palette className="h-4 w-4 text-muted-foreground" />
                     <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Drink Theme</span>
@@ -369,7 +369,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                           'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all text-center',
                           (crew.drinkTheme ?? 'beer') === key
                             ? 'border-primary bg-primary/10'
-                            : 'border-border hover:border-primary/40'
+                            : 'border-border bg-surface/50 hover:border-primary/50'
                         )}
                       >
                         <span className="text-xl">{theme.emoji}</span>
@@ -637,7 +637,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                     'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all text-center',
                     nightThemeOverride === null
                       ? 'border-primary bg-primary/10'
-                      : 'border-border hover:border-primary/40'
+                      : 'border-border bg-surface/30 hover:border-primary/50'
                   )}
                 >
                   <span className="text-xl">{DRINK_THEMES[crew.drinkTheme ?? 'beer'].emoji}</span>
@@ -658,7 +658,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                         'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all text-center',
                         nightThemeOverride === key
                           ? 'border-primary bg-primary/10'
-                          : 'border-border hover:border-primary/40'
+                          : 'border-border bg-surface/30 hover:border-primary/50'
                       )}
                     >
                       <span className="text-xl">{theme.emoji}</span>

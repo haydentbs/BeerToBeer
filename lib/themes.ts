@@ -51,31 +51,31 @@ export const DRINK_THEMES: Record<DrinkTheme, DrinkThemeConfig> = {
     name: 'Cocktails',
     emoji: '🍸',
     icon: 'Martini',
-    hues: { primary: 350, secondary: 310, accent: 0, win: 350, loss: 25 },
+    hues: { primary: 335, secondary: 310, accent: 345, win: 335, loss: 20 },
   },
   shots: {
     name: 'Shots',
     emoji: '🥃',
     icon: 'Zap',
-    hues: { primary: 145, secondary: 170, accent: 130, win: 145, loss: 25 },
+    hues: { primary: 250, secondary: 230, accent: 265, win: 250, loss: 20 },
   },
   tequila: {
     name: 'Tequila',
     emoji: '🫗',
     icon: 'Flame',
-    hues: { primary: 55, secondary: 30, accent: 45, win: 55, loss: 25 },
+    hues: { primary: 130, secondary: 150, accent: 120, win: 130, loss: 20 },
   },
   wine: {
     name: 'Wine',
     emoji: '🍷',
     icon: 'Wine',
-    hues: { primary: 10, secondary: 340, accent: 20, win: 10, loss: 25 },
+    hues: { primary: 10, secondary: 355, accent: 18, win: 10, loss: 350 },
   },
   whiskey: {
     name: 'Whiskey',
     emoji: '🥃',
     icon: 'Cigarette',
-    hues: { primary: 50, secondary: 30, accent: 40, win: 50, loss: 25 },
+    hues: { primary: 38, secondary: 25, accent: 32, win: 38, loss: 20 },
   },
 }
 
