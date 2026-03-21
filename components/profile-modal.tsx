@@ -1,7 +1,9 @@
 'use client'
 
-import { X, Trophy, Target, Flame, TrendingUp, Beer, Users, LogIn } from 'lucide-react'
+import { X, Trophy, Target, Flame, TrendingUp, Beer, Users, LogIn, Sun, Moon, Monitor, EyeOff, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTheme } from './theme-provider'
+import type { AppMode } from '@/lib/themes'
 
 interface ProfileCrew {
   name: string
@@ -45,6 +47,14 @@ export function ProfileModal({
   onFinishAccount,
   isSigningOut = false,
 }: ProfileModalProps) {
+  const { mode, setMode, drinkEmoji, themesDisabled, setThemesDisabled } = useTheme()
+
+  const modeOptions: { value: AppMode; icon: typeof Sun; label: string }[] = [
+    { value: 'light', icon: Sun, label: 'Light' },
+    { value: 'classic', icon: Monitor, label: 'Classic' },
+    { value: 'dark', icon: Moon, label: 'Dark' },
+  ]
+
   if (!isOpen) return null
 
   const netTotal = stats.totalDrinksWon - stats.totalDrinksLost
@@ -167,6 +177,54 @@ export function ProfileModal({
             </div>
           </div>
 
+          {/* Appearance */}
+          <div>
+            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Appearance</h3>
+            <div className="space-y-3">
+              {/* Mode Toggle */}
+              <div className="p-3 rounded-xl bg-surface border-2 border-border">
+                <div className="text-xs text-muted-foreground mb-2">Mode</div>
+                <div className="flex rounded-lg border border-border overflow-hidden">
+                  {modeOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setMode(opt.value)}
+                      className={cn(
+                        'flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-semibold transition-colors',
+                        mode === opt.value
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-transparent text-foreground hover:bg-surface-elevated'
+                      )}
+                    >
+                      <opt.icon className="w-4 h-4" />
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Disable Crew Themes */}
+              <button
+                onClick={() => setThemesDisabled(!themesDisabled)}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-surface border-2 border-border"
+              >
+                <div className="flex items-center gap-2">
+                  {themesDisabled ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-primary" />}
+                  <span className="text-sm font-semibold text-foreground">Crew drink themes</span>
+                </div>
+                <div className={cn(
+                  'w-10 h-6 rounded-full border-2 transition-colors flex items-center',
+                  themesDisabled ? 'bg-muted border-border' : 'bg-primary border-primary'
+                )}>
+                  <div className={cn(
+                    'w-4 h-4 rounded-full bg-white shadow-sm transition-transform',
+                    themesDisabled ? 'translate-x-0.5' : 'translate-x-[18px]'
+                  )} />
+                </div>
+              </button>
+            </div>
+          </div>
+
           {/* Crews */}
           {crews.length > 0 && (
             <div>
@@ -185,7 +243,7 @@ export function ProfileModal({
                       'font-bold font-mono text-sm',
                       crew.netPosition > 0 ? 'text-win' : crew.netPosition < 0 ? 'text-loss' : 'text-foreground'
                     )}>
-                      {crew.netPosition > 0 ? '+' : ''}{crew.netPosition.toFixed(1)} 🍺
+                      {crew.netPosition > 0 ? '+' : ''}{crew.netPosition.toFixed(1)} {drinkEmoji}
                     </span>
                   </div>
                 ))}

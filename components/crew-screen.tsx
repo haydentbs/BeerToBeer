@@ -1,23 +1,26 @@
 'use client'
 
 import { useState } from 'react'
-import { Copy, Check, ExternalLink, Moon, Settings, Users, Plus, Crown, X, Pencil, UserMinus, Trash2, LogOut, ChevronRight, AlertTriangle, Clock, Trophy, Swords, HelpCircle, Beer } from 'lucide-react'
+import { Copy, Check, ExternalLink, Moon, Settings, Users, Plus, Crown, X, Pencil, UserMinus, Trash2, LogOut, ChevronRight, AlertTriangle, Clock, Trophy, Swords, HelpCircle, Beer, Palette } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { currentUser, type Crew, type PastNight } from '@/lib/store'
+import { DRINK_THEMES, type DrinkTheme } from '@/lib/themes'
+import { useTheme } from './theme-provider'
 
 interface CrewScreenProps {
   crew: Crew
   currentUserId: string
-  onStartNight: () => void
+  onStartNight: (nightThemeOverride?: DrinkTheme) => void
   onLeaveNight: () => void
   onRejoinNight: () => void
   onRenameCrew: (name: string) => void
   onKickMember: (memberId: string) => void
   onDeleteCrew: () => void
   onLeaveCrew: () => void
+  onChangeDrinkTheme: (theme: DrinkTheme) => void
 }
 
-export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, onRejoinNight, onRenameCrew, onKickMember, onDeleteCrew, onLeaveCrew }: CrewScreenProps) {
+export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, onRejoinNight, onRenameCrew, onKickMember, onDeleteCrew, onLeaveCrew, onChangeDrinkTheme }: CrewScreenProps) {
   const [showInvite, setShowInvite] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showRename, setShowRename] = useState(false)
@@ -26,6 +29,9 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
   const [selectedNight, setSelectedNight] = useState<PastNight | null>(null)
   const [renameValue, setRenameValue] = useState(crew.name)
   const [copied, setCopied] = useState(false)
+  const [showStartNight, setShowStartNight] = useState(false)
+  const [nightThemeOverride, setNightThemeOverride] = useState<DrinkTheme | null>(null)
+  const { drinkEmoji, setActiveDrinkTheme } = useTheme()
 
   const isCreator = crew.members[0]?.id === currentUser.id
 
@@ -123,7 +129,10 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
           )
         })() : (
           <button
-            onClick={onStartNight}
+            onClick={() => {
+              setNightThemeOverride(null)
+              setShowStartNight(true)
+            }}
             className="w-full p-4 rounded-xl bg-primary text-primary-foreground font-bold text-lg border-3 border-border shadow-[4px_4px_0px_0px_var(--border)] active:shadow-none active:translate-x-[4px] active:translate-y-[4px] transition-all flex items-center justify-center gap-2"
           >
             <Moon className="h-5 w-5" />
@@ -344,6 +353,38 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                 )
               )}
 
+              {/* Drink Theme Picker (creator only) */}
+              {isCreator && (
+                <div className="p-3 rounded-xl bg-surface border-2 border-border space-y-2">
+                  <div className="flex items-center gap-2 px-1">
+                    <Palette className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Drink Theme</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(Object.entries(DRINK_THEMES) as [DrinkTheme, typeof DRINK_THEMES[DrinkTheme]][]).map(([key, theme]) => (
+                      <button
+                        key={key}
+                        onClick={() => onChangeDrinkTheme(key)}
+                        className={cn(
+                          'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all text-center',
+                          (crew.drinkTheme ?? 'beer') === key
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border hover:border-primary/40'
+                        )}
+                      >
+                        <span className="text-xl">{theme.emoji}</span>
+                        <span className={cn(
+                          'text-xs font-semibold',
+                          (crew.drinkTheme ?? 'beer') === key ? 'text-primary' : 'text-card-foreground'
+                        )}>
+                          {theme.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Members Management (creator only) */}
               {isCreator && crew.members.length > 1 && (
                 <div>
@@ -520,7 +561,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                           'font-bold font-mono',
                           entry.net > 0 ? 'text-win' : entry.net < 0 ? 'text-loss' : 'text-foreground'
                         )}>
-                          {entry.net > 0 ? '+' : ''}{entry.net.toFixed(1)} 🍺
+                          {entry.net > 0 ? '+' : ''}{entry.net.toFixed(1)} {drinkEmoji}
                         </span>
                       </div>
                     ))}
@@ -561,6 +602,90 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
 
             {/* Bottom padding for mobile */}
             <div className="h-20 sm:h-4 shrink-0" />
+          </div>
+        </div>
+      )}
+
+      {/* Start Night Modal */}
+      {showStartNight && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div
+            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            onClick={() => setShowStartNight(false)}
+          />
+          <div className="relative w-full max-w-sm bg-card rounded-t-2xl sm:rounded-2xl border-3 border-border p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-card-foreground">Start a Night</h3>
+              <button
+                onClick={() => setShowStartNight(false)}
+                className="p-1.5 rounded-lg hover:bg-surface transition-colors"
+              >
+                <X className="h-5 w-5 text-card-foreground" />
+              </button>
+            </div>
+
+            {/* Night Theme Override */}
+            <div className="mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Palette className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Tonight&apos;s theme</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={() => setNightThemeOverride(null)}
+                  className={cn(
+                    'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all text-center',
+                    nightThemeOverride === null
+                      ? 'border-primary bg-primary/10'
+                      : 'border-border hover:border-primary/40'
+                  )}
+                >
+                  <span className="text-xl">{DRINK_THEMES[crew.drinkTheme ?? 'beer'].emoji}</span>
+                  <span className={cn(
+                    'text-xs font-semibold',
+                    nightThemeOverride === null ? 'text-primary' : 'text-card-foreground'
+                  )}>
+                    Crew Default
+                  </span>
+                </button>
+                {(Object.entries(DRINK_THEMES) as [DrinkTheme, typeof DRINK_THEMES[DrinkTheme]][])
+                  .filter(([key]) => key !== (crew.drinkTheme ?? 'beer'))
+                  .map(([key, theme]) => (
+                    <button
+                      key={key}
+                      onClick={() => setNightThemeOverride(key)}
+                      className={cn(
+                        'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all text-center',
+                        nightThemeOverride === key
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-primary/40'
+                      )}
+                    >
+                      <span className="text-xl">{theme.emoji}</span>
+                      <span className={cn(
+                        'text-xs font-semibold',
+                        nightThemeOverride === key ? 'text-primary' : 'text-card-foreground'
+                      )}>
+                        {theme.name}
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                if (nightThemeOverride) {
+                  setActiveDrinkTheme(nightThemeOverride)
+                }
+                onStartNight(nightThemeOverride ?? undefined)
+                setShowStartNight(false)
+              }}
+              className="w-full p-4 rounded-xl bg-primary text-primary-foreground font-bold text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex items-center justify-center gap-2"
+            >
+              <Moon className="h-5 w-5" />
+              Let&apos;s Go
+            </button>
           </div>
         </div>
       )}

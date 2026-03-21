@@ -59,6 +59,7 @@ export interface Night {
   startedAt: Date
   bets: Bet[]
   participants: User[]
+  drinkThemeOverride?: 'beer' | 'cocktails' | 'shots' | 'tequila' | 'wine' | 'whiskey'
 }
 
 export interface PastBetSummary {
@@ -91,6 +92,7 @@ export interface Crew {
   currentNight?: Night
   pastNights: PastNight[]
   inviteCode: string
+  drinkTheme?: 'beer' | 'cocktails' | 'shots' | 'tequila' | 'wine' | 'whiskey'
 }
 
 export interface CrewSummary {
@@ -297,6 +299,7 @@ export const mockCrews: Crew[] = [
     members: mockUsers,
     currentNight: mockCurrentNight,
     inviteCode: 'USUAL-24',
+    drinkTheme: 'beer',
     pastNights: [
       {
         id: 'night-1', name: "Thursday at The Local", date: "Mar 14", bets: 8, winner: "Sarah", duration: "4h 23m",
@@ -346,6 +349,7 @@ export const mockCrews: Crew[] = [
     members: workUsers,
     currentNight: undefined,
     inviteCode: 'WORK-24',
+    drinkTheme: 'cocktails',
     pastNights: [
       { id: 'wn-1', name: "Friday Beers", date: "Mar 7", bets: 5, winner: "Priya", duration: "3h 15m", betDetails: [], leaderboard: [] },
       { id: 'wn-2', name: "Launch Party", date: "Feb 28", bets: 9, winner: "You", duration: "5h 30m", betDetails: [], leaderboard: [] },
@@ -357,6 +361,7 @@ export const mockCrews: Crew[] = [
     members: collegeUsers,
     currentNight: undefined,
     inviteCode: 'CLGB-24',
+    drinkTheme: 'shots',
     pastNights: [
       { id: 'cn-1', name: "Homecoming", date: "Feb 15", bets: 22, winner: "Brody", duration: "8h 20m", betDetails: [], leaderboard: [] },
       { id: 'cn-2', name: "Super Bowl", date: "Feb 9", bets: 18, winner: "Marcus", duration: "5h 45m", betDetails: [], leaderboard: [] },

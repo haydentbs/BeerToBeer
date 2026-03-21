@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Space_Grotesk, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { BeerScoreThemeProvider } from '@/components/theme-provider'
 import './globals.css'
 
 const spaceGrotesk = Space_Grotesk({ 
@@ -51,7 +52,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-background">
       <body className={`${spaceGrotesk.variable} ${geistMono.variable} font-sans antialiased`}>
-        {children}
+        <BeerScoreThemeProvider>
+          {children}
+        </BeerScoreThemeProvider>
         <Analytics />
       </body>
     </html>

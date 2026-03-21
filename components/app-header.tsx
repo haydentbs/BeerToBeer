@@ -1,9 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { Bell, ArrowLeft, LogOut, User, Settings } from 'lucide-react'
+import { Bell, ArrowLeft, LogOut, User, Settings, Sun, Moon, Monitor } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { NotificationPanel } from './notification-panel'
+import { useTheme } from './theme-provider'
+import type { AppMode } from '@/lib/themes'
 import type { Notification } from '@/lib/store'
 
 interface AppHeaderProps {
@@ -41,8 +43,15 @@ export function AppHeader({
 }: AppHeaderProps) {
   const [showMenu, setShowMenu] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
+  const { mode, setMode, drinkEmoji } = useTheme()
 
   const unreadCount = notifications.filter(n => !n.read).length
+
+  const modeOptions: { value: AppMode; icon: typeof Sun; label: string }[] = [
+    { value: 'light', icon: Sun, label: 'Light' },
+    { value: 'classic', icon: Monitor, label: 'Classic' },
+    { value: 'dark', icon: Moon, label: 'Dark' },
+  ]
 
   return (
     <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b-3 border-border safe-area-top">
@@ -71,7 +80,7 @@ export function AppHeader({
             )}
           >
             <span>{netPosition > 0 ? '+' : ''}{netPosition.toFixed(1)}</span>
-            <span className="text-xs">🍺</span>
+            <span className="text-xs">{drinkEmoji}</span>
           </div>
 
           {/* Notification Bell */}
@@ -127,6 +136,27 @@ export function AppHeader({
                     <User className="w-4 h-4" />
                     <span className="text-sm font-semibold">Profile</span>
                   </button>
+
+                  {/* Mode Toggle */}
+                  <div className="px-3 py-2">
+                    <div className="flex rounded-lg border border-border overflow-hidden">
+                      {modeOptions.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setMode(opt.value)}
+                          className={cn(
+                            'flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-semibold transition-colors',
+                            mode === opt.value
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-transparent text-card-foreground hover:bg-surface/50'
+                          )}
+                        >
+                          <opt.icon className="w-3 h-3" />
+                          <span>{opt.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
                   {isGuest && (
                     <button

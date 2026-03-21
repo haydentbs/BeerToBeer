@@ -1,40 +1,46 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowRight, Beer, Bell, ChevronRight, LogOut, Plus, Users } from 'lucide-react'
+import { Beer, Bell, Plus, Users, ArrowRight, ChevronRight, Trophy, Flame, LogOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { type Crew, type User, currentUser } from '@/lib/store'
+import { type Crew, type User, type Notification, currentUser, getNetPosition, formatDrinks, generateCrewCode } from '@/lib/store'
+import { DRINK_THEMES } from '@/lib/themes'
+import { NotificationPanel } from './notification-panel'
 
 interface HomeScreenProps {
   user: User
-  userEmail?: string
   crews: Crew[]
   /** Per-crew all-time ledger data for computing net positions */
   crewNetPositions: Record<string, number>
   onSelectCrew: (crewId: string) => void
   onCreateCrew: (name: string) => void
   onJoinCrew: (code: string) => void
-  onSignOut: () => void
-  isSigningOut?: boolean
+  notifications?: Notification[]
+  onMarkRead?: () => void
+  onSignOut?: () => void
 }
 
 export function HomeScreen({
   user,
-  userEmail,
   crews,
   crewNetPositions,
   onSelectCrew,
   onCreateCrew,
   onJoinCrew,
+  notifications = [],
+  onMarkRead,
   onSignOut,
-  isSigningOut = false,
 }: HomeScreenProps) {
   const [showAction, setShowAction] = useState<'none' | 'create' | 'join'>('none')
   const [newCrewName, setNewCrewName] = useState('')
   const [joinCode, setJoinCode] = useState('')
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
 
   const liveCrews = crews.filter(c => c.currentNight)
   const otherCrews = crews.filter(c => !c.currentNight)
+
+  const unreadCount = notifications.filter(n => !n.read).length
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -63,28 +69,73 @@ export function HomeScreen({
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <Beer className="w-4 h-4 text-primary-foreground" />
             </div>
-            <div>
-              <span className="block text-lg font-bold text-foreground">BeerScore</span>
-              {userEmail && <span className="block text-xs text-muted-foreground">{userEmail}</span>}
-            </div>
+            <span className="text-lg font-bold text-foreground">BeerScore</span>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={onSignOut}
-              disabled={isSigningOut}
-              className="flex items-center gap-2 rounded-full border-2 border-border px-3 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-surface disabled:opacity-50"
-            >
-              <LogOut className="h-4 w-4" />
-              {isSigningOut ? 'Signing out…' : 'Sign out'}
-            </button>
-            <button className="relative p-2 rounded-full hover:bg-surface transition-colors">
-              <Bell className="h-5 w-5 text-foreground" />
-            </button>
-            <div className="w-8 h-8 rounded-full bg-primary border-2 border-border flex items-center justify-center">
-              <span className="text-xs font-bold text-primary-foreground">
-                {user.initials}
-              </span>
+            {/* Bell with Notifications */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowNotifications(!showNotifications)
+                  setShowUserMenu(false)
+                }}
+                className="relative p-2 rounded-full hover:bg-surface transition-colors"
+              >
+                <Bell className="h-5 w-5 text-foreground" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />
+                )}
+              </button>
+
+              {showNotifications && (
+                <NotificationPanel
+                  notifications={notifications}
+                  onMarkAllRead={() => onMarkRead?.()}
+                  onClose={() => setShowNotifications(false)}
+                />
+              )}
+            </div>
+
+            {/* User avatar with menu */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowUserMenu(!showUserMenu)
+                  setShowNotifications(false)
+                }}
+                className="w-8 h-8 rounded-full bg-primary border-2 border-border flex items-center justify-center"
+              >
+                <span className="text-xs font-bold text-primary-foreground">
+                  {user.initials}
+                </span>
+              </button>
+
+              {showUserMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowUserMenu(false)}
+                  />
+                  <div className="absolute right-0 top-10 z-50 w-48 bg-card rounded-xl border-2 border-border shadow-brutal p-2">
+                    <div className="px-3 py-2 border-b border-border mb-2">
+                      <p className="text-sm font-bold text-card-foreground">{user.name}</p>
+                    </div>
+                    {onSignOut && (
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false)
+                          onSignOut()
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-surface transition-colors text-muted-foreground"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span className="text-sm font-semibold">Sign Out</span>
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -140,7 +191,7 @@ export function HomeScreen({
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-card-foreground text-lg truncate">{crew.name}</h3>
+                        <h3 className="font-bold text-card-foreground text-lg truncate">{DRINK_THEMES[crew.drinkTheme ?? 'beer'].emoji} {crew.name}</h3>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="w-2 h-2 rounded-full bg-win animate-pulse" />
                           <span className="text-sm text-win font-semibold">{crew.currentNight?.name}</span>
@@ -232,7 +283,7 @@ export function HomeScreen({
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-card-foreground text-lg truncate">{crew.name}</h3>
+                        <h3 className="font-bold text-card-foreground text-lg truncate">{DRINK_THEMES[crew.drinkTheme ?? 'beer'].emoji} {crew.name}</h3>
                         {hasNight ? (
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="w-2 h-2 rounded-full bg-win animate-pulse" />
@@ -348,7 +399,7 @@ export function HomeScreen({
                   value={newCrewName}
                   onChange={(e) => setNewCrewName(e.target.value)}
                   placeholder="The Usual Suspects"
-                  className="w-full px-4 py-3 rounded-xl bg-surface text-foreground font-semibold border-2 border-border focus:border-primary focus:outline-none transition-colors text-lg"
+                  className="w-full px-4 py-3 rounded-xl bg-surface text-card-foreground font-semibold border-2 border-border focus:border-primary focus:outline-none transition-colors text-lg"
                   autoFocus
                 />
               </div>
@@ -402,7 +453,7 @@ export function HomeScreen({
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
                   placeholder="XXXX-XX"
                   maxLength={8}
-                  className="w-full px-4 py-3 rounded-xl bg-surface text-foreground font-mono font-bold border-2 border-border focus:border-primary focus:outline-none transition-colors text-lg text-center tracking-widest uppercase"
+                  className="w-full px-4 py-3 rounded-xl bg-surface text-card-foreground font-mono font-bold border-2 border-border focus:border-primary focus:outline-none transition-colors text-lg text-center tracking-widest uppercase"
                   autoFocus
                 />
               </div>

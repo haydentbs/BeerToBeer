@@ -39,6 +39,8 @@ import {
   type Bet,
   type Notification,
 } from '@/lib/store'
+import { useTheme } from '@/components/theme-provider'
+import type { DrinkTheme } from '@/lib/themes'
 
 type AppView = 'home' | 'crew'
 
@@ -71,6 +73,7 @@ export default function BeerScoreApp() {
   const [authNotice, setAuthNotice] = useState<string | null>(null)
   const supabaseConfigured = isSupabaseConfigured()
   const supabaseConfigError = getSupabaseConfigError()
+  const { setActiveDrinkTheme } = useTheme()
 
   const applyAuthenticatedUser = useCallback((authUser: SupabaseUser | null) => {
     if (!authUser) {
@@ -247,6 +250,9 @@ export default function BeerScoreApp() {
     setActiveCrewId(matchingCrew.id)
     setActiveTab('tonight')
     setView('crew')
+    if (matchingCrew.drinkTheme) {
+      setActiveDrinkTheme(matchingCrew.drinkTheme)
+    }
 
     return { message: `Playing as ${guestSession.user.name} in ${matchingCrew.name}.` }
   }
@@ -282,11 +288,16 @@ export default function BeerScoreApp() {
     setActiveCrewId(crewId)
     setActiveTab('tonight')
     setView('crew')
+    // Apply night theme override if active, otherwise crew's drink theme
+    const crew = crews.find((c) => c.id === crewId)
+    const effectiveTheme = crew?.currentNight?.drinkThemeOverride ?? crew?.drinkTheme ?? 'beer'
+    setActiveDrinkTheme(effectiveTheme)
   }
 
   const handleBackToHome = () => {
     setActiveCrewId(null)
     setView('home')
+    setActiveDrinkTheme('beer')
   }
 
   const handleCreateCrew = (name: string) => {
@@ -345,6 +356,15 @@ export default function BeerScoreApp() {
     if (activeCrewId) {
       setCrews((prev) => prev.filter((crew) => crew.id !== activeCrewId))
       handleBackToHome()
+    }
+  }
+
+  const handleChangeDrinkTheme = (theme: DrinkTheme) => {
+    if (activeCrewId) {
+      setCrews((prev) => prev.map((crew) =>
+        crew.id === activeCrewId ? { ...crew, drinkTheme: theme } : crew
+      ))
+      setActiveDrinkTheme(theme)
     }
   }
 
@@ -412,7 +432,7 @@ export default function BeerScoreApp() {
     // Mock UI only for now.
   }
 
-  const handleStartNight = () => {
+  const handleStartNight = (nightThemeOverride?: DrinkTheme) => {
     if (!activeCrewId) {
       return
     }
@@ -429,11 +449,17 @@ export default function BeerScoreApp() {
                 startedAt: new Date(),
                 bets: [],
                 participants: crew.members,
+                drinkThemeOverride: nightThemeOverride,
               },
             }
           : crew
       )
     )
+
+    // Apply night theme override if set
+    if (nightThemeOverride) {
+      setActiveDrinkTheme(nightThemeOverride)
+    }
   }
 
   // Remove current user from night participants. If they're the last one, close the night.
@@ -447,7 +473,8 @@ export default function BeerScoreApp() {
         const remaining = crew.currentNight.participants.filter((p) => p.id !== session.user.id)
 
         if (remaining.length === 0) {
-          // Last person out — close the night
+          // Last person out — close the night, revert to crew theme
+          setActiveDrinkTheme(crew.drinkTheme ?? 'beer')
           return {
             ...crew,
             currentNight: undefined,
@@ -642,6 +669,7 @@ export default function BeerScoreApp() {
                 onKickMember={handleKickMember}
                 onDeleteCrew={handleDeleteCrew}
                 onLeaveCrew={handleLeaveCrew}
+                onChangeDrinkTheme={handleChangeDrinkTheme}
               />
         )}
       </div>

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { BetCardCompact } from './bet-card-compact'
 import { BetDetailModal } from './bet-detail-modal'
+import { useTheme } from './theme-provider'
 import type { Bet, Night } from '@/lib/store'
 
 interface TonightScreenProps {
@@ -12,6 +13,7 @@ interface TonightScreenProps {
 
 export function TonightScreen({ night, onWager }: TonightScreenProps) {
   const [selectedBet, setSelectedBet] = useState<Bet | null>(null)
+  const { drinkEmoji } = useTheme()
   
   const activeBets = night.bets.filter(b => b.status === 'open')
   const resolvedBets = night.bets.filter(b => b.status === 'resolved')
@@ -70,7 +72,7 @@ export function TonightScreen({ night, onWager }: TonightScreenProps) {
         {activeBets.length === 0 && resolvedBets.length === 0 && (
           <div className="text-center py-12">
             <div className="w-16 h-16 rounded-full bg-surface border-2 border-border mx-auto flex items-center justify-center mb-4">
-              <span className="text-2xl">🍺</span>
+              <span className="text-2xl">{drinkEmoji}</span>
             </div>
             <h3 className="font-bold text-foreground mb-2">No bets yet</h3>
             <p className="text-sm text-muted-foreground">
