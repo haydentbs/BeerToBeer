@@ -98,7 +98,7 @@ describe('TonightScreen', () => {
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
   })
 
-  it('shows actionable bet and challenge banners for the current recipient', async () => {
+  it('shows actionable bet banners for the current recipient while Beer Bomb invites stay hidden in V2', async () => {
     const user = userEvent.setup()
     const creator = makeCurrentUser()
     const currentUser: User = {
@@ -163,16 +163,13 @@ describe('TonightScreen', () => {
 
     expect(screen.getByText('Darts rematch')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /accept & place 2/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /accept & play for 1.5/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /accept & play for 1.5/i })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /accept & place 2/i }))
     expect(handlers.onBetOfferAccept).toHaveBeenCalledWith('bet-1')
 
     await user.click(screen.getAllByRole('button', { name: /^decline$/i })[0])
     expect(handlers.onBetOfferDecline).toHaveBeenCalledWith('bet-1')
-
-    await user.click(screen.getByRole('button', { name: /accept & play for 1.5/i }))
-    expect(handlers.onBeerBombAccept).toHaveBeenCalledWith('match-1')
   })
 
   it('shows pending offers as waiting cards for the creator instead of actionable banners', () => {

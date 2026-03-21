@@ -18,6 +18,10 @@ export function getSupabaseServiceRoleKey() {
   return getRequiredEnv('SUPABASE_SERVICE_ROLE_KEY')
 }
 
+export function getExpirationSweepSecret() {
+  return getRequiredEnv('EXPIRATION_SWEEP_SECRET')
+}
+
 export function isServerSupabaseConfigured() {
   return Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&

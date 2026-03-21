@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Bomb, HelpCircle, Lock, Minus, Plus, Swords, Trophy, X } from 'lucide-react'
+import { HelpCircle, Lock, Minus, Plus, Swords, Trophy, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { BetSubtype, User } from '@/lib/store'
 import { useCurrentUser } from '@/lib/current-user'
@@ -21,7 +21,7 @@ interface CreateBetModalProps {
     initialOptionIndex?: number
     closeTime?: number
   }) => void
-  onCreateMiniGame: (challenge: {
+  onCreateMiniGame?: (challenge: {
     title: string
     opponent: { id: string }
     wager: number
@@ -31,10 +31,10 @@ interface CreateBetModalProps {
 }
 
 type BetType = 'prop' | 'h2h'
-type CreationMode = 'prop' | 'h2h' | 'mini-game'
+type CreationMode = 'prop' | 'h2h'
 type PropFormat = 'yesno' | 'overunder' | 'multi'
 
-export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, members }: CreateBetModalProps) {
+export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame: _onCreateMiniGame, members }: CreateBetModalProps) {
   const currentUser = useCurrentUser()
   const [step, setStep] = useState(1)
   const [mode, setMode] = useState<CreationMode | null>(null)
@@ -65,21 +65,6 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
 
     const opponent = members.find((user) => user.id === challenger)
     const cleanOptions = options.map((option) => option.trim()).filter(Boolean)
-
-    if (mode === 'mini-game') {
-      if (!opponent) return
-
-      onCreateMiniGame({
-        title: title.trim() || `Beer Bomb vs ${opponent.name}`,
-        opponent: { id: opponent.id },
-        wager,
-        closeTime,
-        boardSize: 8,
-      })
-      resetForm()
-      onClose()
-      return
-    }
 
     const bet = {
       type: mode as BetType,
@@ -112,15 +97,12 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
 
   const multiOptions = options.map((option) => option.trim()).filter(Boolean)
   const selectedOpponent = challenger ? members.find((user) => user.id === challenger) : null
-  const canSubmit =
-    mode === 'mini-game'
-      ? Boolean(selectedOpponent)
-      : Boolean(
-          title.trim() &&
-            (mode !== 'h2h' || challenger) &&
-            (mode !== 'prop' || propFormat !== 'multi' || multiOptions.length >= 3) &&
-            (mode !== 'prop' || propFormat !== 'overunder' || (line > 0 && Number.isInteger(line * 2)))
-        )
+  const canSubmit = Boolean(
+    title.trim() &&
+      (mode !== 'h2h' || challenger) &&
+      (mode !== 'prop' || propFormat !== 'multi' || multiOptions.length >= 3) &&
+      (mode !== 'prop' || propFormat !== 'overunder' || (line > 0 && Number.isInteger(line * 2)))
+  )
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
@@ -205,26 +187,6 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
                 </div>
               </button>
 
-              <button
-                onClick={() => {
-                  setMode('mini-game')
-                  setStep(2)
-                }}
-                className={cn(
-                  'w-full rounded-xl border-3 p-4 text-left transition-all',
-                  mode === 'mini-game' ? 'border-primary bg-primary/10' : 'border-border/60 bg-card hover:border-primary/50 hover:bg-surface/30'
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/20">
-                    <Bomb className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-foreground">Beer Bomb</h3>
-                    <p className="text-sm text-muted-foreground">Tap the wrong beer and you lose</p>
-                  </div>
-                </div>
-              </button>
             </div>
           </div>
         )}
@@ -260,7 +222,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
             {mode !== 'prop' && (
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {mode === 'mini-game' ? 'Challenge who?' : 'Challenge who?'}
+                  Challenge who?
                 </label>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {members
@@ -288,31 +250,20 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
 
             <div>
               <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {mode === 'mini-game' ? 'Challenge title' : mode === 'h2h' ? "What's the challenge?" : "What's the bet?"}
+                {mode === 'h2h' ? "What's the challenge?" : "What's the bet?"}
               </label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder={
-                  mode === 'mini-game'
-                    ? 'Beer Bomb showdown'
-                    : mode === 'h2h'
+                  mode === 'h2h'
                     ? 'Pool, darts, flip cup...'
                     : 'Will Dave mention his ex?'
                 }
                 className="mt-2 w-full rounded-xl border-2 border-border bg-surface px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
               />
             </div>
-
-            {mode === 'mini-game' && (
-              <div className="rounded-xl border-2 border-border bg-surface/80 p-4">
-                <p className="text-sm font-semibold text-card-foreground">Beer Bomb challenge</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Hide the bomb, line up the beers, and let the turn order decide who taps first.
-                </p>
-              </div>
-            )}
 
             {mode === 'prop' && propFormat === 'overunder' && (
               <div>
@@ -449,7 +400,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
             {mode !== 'h2h' && (
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {mode === 'mini-game' ? 'Responds within' : 'Wagering closes in'}
+                  Wagering closes in
                 </label>
                 <div className="mt-2 flex items-center gap-2">
                   {[1, 2, 5, 15, 60].map((mins) => (
@@ -482,7 +433,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
                 disabled={!canSubmit}
                 className="flex-1 rounded-xl border-2 border-border bg-primary py-3 font-display font-normal text-primary-foreground shadow-[3px_3px_0px_0px_var(--border)] transition-all active:translate-x-[3px] active:translate-y-[3px] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {mode === 'mini-game' ? `Start ${selectedOpponent ? `vs ${selectedOpponent.name}` : 'Beer Bomb'}` : 'Create Bet'}
+                Create Bet
               </button>
             </div>
           </div>

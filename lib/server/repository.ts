@@ -27,7 +27,6 @@ const MAX_WAGER_DRINKS = 5
 const RESULT_CONFIRMATION_WINDOW_MS = 60_000
 const DISPUTE_VOTE_WINDOW_MS = 60_000
 const H2H_RESPONSE_WINDOW_MINUTES = 5
-const EXPIRATION_SWEEP_INTERVAL_MS = 15_000
 
 const ROLE_ORDER: Record<Role, number> = {
   creator: 0,
@@ -59,7 +58,6 @@ const CREW_SETTINGS_SELECT =
 const MINI_GAME_MATCH_SELECT =
   'id, crew_id, night_id, game_key, title, status, created_by_membership_id, opponent_membership_id, proposed_wager, agreed_wager, board_size, hidden_slot_index, current_turn_membership_id, starting_player_membership_id, winner_membership_id, loser_membership_id, revealed_slots, metadata, accepted_at, declined_at, cancelled_at, completed_at, created_at, updated_at, bet_id, respond_by_at'
 const NOTIFICATION_BOOTSTRAP_LIMIT = 50
-const expirationSweepByCrewId = new Map<string, number>()
 
 function getInitials(value: string) {
   const parts = value.trim().split(/\s+/).filter(Boolean)
@@ -1078,20 +1076,6 @@ async function requireActiveNightParticipant(nightId: string, membershipId: stri
 
 let miniGameMatchTableAvailable: boolean | null = null
 
-function getCrewIdsDueForExpirationSweep(crewIds: string[]) {
-  const now = Date.now()
-  const dueCrewIds = crewIds.filter((crewId) => {
-    const lastSweepAt = expirationSweepByCrewId.get(crewId) ?? 0
-    return now - lastSweepAt >= EXPIRATION_SWEEP_INTERVAL_MS
-  })
-
-  dueCrewIds.forEach((crewId) => {
-    expirationSweepByCrewId.set(crewId, now)
-  })
-
-  return dueCrewIds
-}
-
 async function loadBackendState(
   actor: RequestActor,
   options: AppBootstrapOptions = {}
@@ -1176,12 +1160,6 @@ async function loadBackendState(
       viewerUser: profile ? buildViewerUser(profile, activeMemberships) : null,
       claimableGuests: [],
     }
-  }
-
-  const crewIdsDueForExpirationSweep = getCrewIdsDueForExpirationSweep(requestedCrewIds)
-  if (crewIdsDueForExpirationSweep.length) {
-    await processBetExpirationsForCrews(crewIdsDueForExpirationSweep)
-    await processMiniGameExpirationsForCrews(crewIdsDueForExpirationSweep)
   }
 
   const [
@@ -2282,6 +2260,158 @@ async function processBetExpirationsForCrews(crewIds: string[]) {
   }
 }
 
+export async function runExpirationSweep() {
+  const supabase = getServiceRoleClient()
+  const now = Date.now()
+  const nowIso = new Date(now).toISOString()
+  const pendingResultCutoffIso = new Date(now - RESULT_CONFIRMATION_WINDOW_MS).toISOString()
+  const crewIds = new Set<string>()
+
+  const [
+    pendingOffersResult,
+    pendingBetsResult,
+    expiredDisputesResult,
+  ] = await Promise.all([
+    supabase
+      .from('bets')
+      .select('crew_id')
+      .eq('status', 'pending_accept')
+      .lt('respond_by_at', nowIso),
+    supabase
+      .from('bets')
+      .select('crew_id')
+      .eq('status', 'pending_result')
+      .lt('pending_result_at', pendingResultCutoffIso),
+    supabase
+      .from('disputes')
+      .select('bet_id')
+      .eq('status', 'open')
+      .lt('expires_at', nowIso),
+  ])
+
+  if (pendingOffersResult.error) throw pendingOffersResult.error
+  if (pendingBetsResult.error) throw pendingBetsResult.error
+  if (expiredDisputesResult.error) throw expiredDisputesResult.error
+
+  for (const row of pendingOffersResult.data ?? []) {
+    if (row.crew_id) {
+      crewIds.add(row.crew_id)
+    }
+  }
+
+  for (const row of pendingBetsResult.data ?? []) {
+    if (row.crew_id) {
+      crewIds.add(row.crew_id)
+    }
+  }
+
+  const disputedBetIds = [...new Set((expiredDisputesResult.data ?? []).map((row: any) => row.bet_id).filter(Boolean))]
+  if (disputedBetIds.length) {
+    const { data: disputedBets, error: disputedBetsError } = await supabase
+      .from('bets')
+      .select('crew_id')
+      .in('id', disputedBetIds)
+
+    if (disputedBetsError) throw disputedBetsError
+
+    for (const row of disputedBets ?? []) {
+      if (row.crew_id) {
+        crewIds.add(row.crew_id)
+      }
+    }
+  }
+
+  if (miniGameMatchTableAvailable !== false) {
+    const { data: expiredMatches, error: expiredMatchesError } = await supabase
+      .from('mini_game_matches')
+      .select('crew_id')
+      .eq('status', 'pending')
+      .lt('respond_by_at', nowIso)
+
+    if (expiredMatchesError) {
+      if (/mini_game_matches|schema cache/i.test(expiredMatchesError.message ?? '')) {
+        miniGameMatchTableAvailable = false
+      } else {
+        throw expiredMatchesError
+      }
+    } else {
+      miniGameMatchTableAvailable = true
+      for (const row of expiredMatches ?? []) {
+        if (row.crew_id) {
+          crewIds.add(row.crew_id)
+        }
+      }
+    }
+  }
+
+  const dueCrewIds = [...crewIds]
+  if (!dueCrewIds.length) {
+    return { processedCrewIds: [] as string[] }
+  }
+
+  await processBetExpirationsForCrews(dueCrewIds)
+  await processMiniGameExpirationsForCrews(dueCrewIds)
+
+  return { processedCrewIds: dueCrewIds }
+}
+
+export async function resetPublicAppData() {
+  const supabase = getServiceRoleClient()
+  const keyTables = ['profiles', 'crews', 'crew_memberships', 'nights', 'bets', 'mini_game_matches', 'notifications'] as const
+  const tableResets = [
+    ['bet_comments', 'id'],
+    ['bet_member_outcomes', 'id'],
+    ['bet_status_events', 'id'],
+    ['wagers', 'id'],
+    ['bet_options', 'id'],
+    ['mini_game_match_events', 'id'],
+    ['dispute_votes', 'id'],
+    ['settlement_confirmations', 'id'],
+    ['settlement_requests', 'id'],
+    ['ledger_events', 'id'],
+    ['notifications', 'id'],
+    ['notification_preferences', 'id'],
+    ['profile_preferences', 'id'],
+    ['night_participants', 'id'],
+    ['crew_invite_redemptions', 'id'],
+    ['crew_join_requests', 'id'],
+    ['crew_invites', 'id'],
+    ['audit_log', 'id'],
+    ['disputes', 'id'],
+    ['mini_game_matches', 'id'],
+    ['bets', 'id'],
+    ['nights', 'id'],
+    ['crew_settings', 'crew_id'],
+    ['crew_memberships', 'id'],
+    ['guest_identities', 'id'],
+    ['crews', 'id'],
+    ['profiles', 'id'],
+  ] as const
+
+  const before = Object.fromEntries(await Promise.all(
+    keyTables.map(async (table) => {
+      const { count, error } = await supabase.from(table).select('*', { count: 'exact', head: true })
+      if (error) throw error
+      return [table, count ?? 0]
+    })
+  ))
+
+  for (const [table, column] of tableResets) {
+    const { error } = await supabase.from(table).delete().not(column, 'is', null)
+    if (error) throw error
+  }
+
+  const after = Object.fromEntries(await Promise.all(
+    keyTables.map(async (table) => {
+      const { count, error } = await supabase.from(table).select('*', { count: 'exact', head: true })
+      if (error) throw error
+      return [table, count ?? 0]
+    })
+  ))
+
+  return { before, after }
+}
+
 async function findOpenDisputeForBet(supabase: ReturnType<typeof getServiceRoleClient>, betId: string) {
   const { data: dispute, error } = await supabase
     .from('disputes')
@@ -2296,6 +2426,7 @@ async function findOpenDisputeForBet(supabase: ReturnType<typeof getServiceRoleC
 
 export async function mutateAppState(actor: RequestActor, action: string, payload: Record<string, any>): Promise<AppMutationPayload> {
   const supabase = getServiceRoleClient()
+  let responseCrewId = typeof payload.crewId === 'string' && payload.crewId ? payload.crewId : null
 
   switch (action) {
     case 'createCrew': {
@@ -2357,6 +2488,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
       await ensureNotificationPreference(membership.id)
       await recordAuditLog(crew.id, membership.id, 'crew_created', 'crew', crew.id, { inviteCode })
+      responseCrewId = crew.id
       break
     }
 
@@ -2442,6 +2574,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
         excludeMembershipId: membershipId,
       })
 
+      responseCrewId = crew.id
       break
     }
 
@@ -2499,6 +2632,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
         excludeMembershipId: claimResult.targetMembershipId,
       })
 
+      responseCrewId = guestMembership.crew_id
       break
     }
 
@@ -4184,5 +4318,10 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       throw new Error(`Unsupported action: ${action}`)
   }
 
-  return loadAppState(actor)
+  return loadAppState(
+    actor,
+    responseCrewId
+      ? { mode: 'crew', activeCrewId: responseCrewId }
+      : undefined
+  )
 }

@@ -268,7 +268,7 @@ export function HomeScreen({
             <div className="space-y-3">
               {liveCrews.map((crew) => {
                 const net = crewNetPositions[crew.id] ?? 0
-                const activeBets = crew.currentNight?.bets.filter(b => b.status === 'open').length ?? 0
+                const activeBets = crew.currentNightOpenBetCount ?? crew.currentNight?.bets.filter(b => b.status === 'open').length ?? 0
 
                 return (
                   <button

@@ -137,6 +137,7 @@ export interface Crew {
   name: string
   members: User[]
   currentNight?: Night
+  currentNightOpenBetCount?: number
   pastNights: PastNight[]
   inviteCode: string
   drinkTheme?: 'beer' | 'cocktails' | 'shots' | 'tequila' | 'wine' | 'whiskey'
