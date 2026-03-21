@@ -94,7 +94,7 @@ export function PendingInviteBanners({
             <div className="min-w-0">
               <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.24em] text-primary">
                 <Bomb className="h-3.5 w-3.5" />
-                Beer Bomb challenge
+                Game invite
               </p>
               <h2 className="mt-2 text-lg font-black text-card-foreground">{match.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -164,7 +164,7 @@ export function PendingInviteBanners({
             <div className="min-w-0">
               <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.24em] text-muted-foreground">
                 <Bomb className="h-3.5 w-3.5 text-primary" />
-                Pending Beer Bomb
+                Pending invite
               </p>
               <h2 className="mt-2 text-base font-black text-card-foreground">{match.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">

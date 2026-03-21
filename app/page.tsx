@@ -547,7 +547,7 @@ export default function BeerScoreApp() {
   )
 
   useEffect(() => {
-    if (!session || view !== 'crew' || !activeCrewId) {
+    if (!session) {
       return
     }
 
@@ -565,7 +565,14 @@ export default function BeerScoreApp() {
       }
     }
 
-    const intervalMs = activeTab === 'tonight' && hasLiveMiniGameMatch ? 2500 : 8000
+    void poll()
+
+    const intervalMs =
+      view === 'crew' && activeTab === 'tonight' && hasLiveMiniGameMatch
+        ? 2500
+        : view === 'crew' && activeCrew?.currentNight
+        ? 4000
+        : 8000
 
     intervalId = setInterval(() => {
       void poll()
@@ -577,7 +584,7 @@ export default function BeerScoreApp() {
         clearInterval(intervalId)
       }
     }
-  }, [activeCrewId, activeTab, applyAppPayload, hasLiveMiniGameMatch, session, view])
+  }, [activeCrew?.currentNight, activeTab, applyAppPayload, hasLiveMiniGameMatch, session, view])
 
   useEffect(() => {
     if (!session || session.isGuest || !getPendingGuestClaimFlag()) {

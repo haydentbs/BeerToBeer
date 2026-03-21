@@ -442,6 +442,19 @@ describe('persistent backend contract', () => {
     expect(pendingMatch?.opponent.membershipId).toBe(opponentMember.membershipId)
     expect(pendingMatch?.respondByAt).toBeTruthy()
 
+    const challengerState = await loadAppState(challenger)
+    const challengerCrew = challengerState.crews.find((entry: any) => entry.id === crew.id)!
+    const challengerPendingMatch = challengerCrew.currentNight?.miniGameMatches.find((match: any) => match.id === pendingMatch!.id)
+    const challengerNotification = challengerState.notifications.find((notification: any) => notification.payload?.matchId === pendingMatch!.id)
+    const observerState = await loadAppState(observer)
+
+    expect(challengerPendingMatch).toBeTruthy()
+    expect(challengerPendingMatch?.status).toBe('pending')
+    expect(challengerPendingMatch?.opponent.membershipId).toBe(opponentMember.membershipId)
+    expect(challengerNotification?.payload?.status).toBe('pending')
+    expect(challengerNotification?.payload?.targetMembershipId).toBe(opponentMember.membershipId)
+    expect(observerState.notifications.some((notification: any) => notification.payload?.matchId === pendingMatch!.id)).toBe(false)
+
     await mutateAppState(challenger, 'respondToMiniGameChallenge', {
       crewId: crew.id,
       matchId: pendingMatch!.id,
