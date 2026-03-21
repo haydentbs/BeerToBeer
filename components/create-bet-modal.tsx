@@ -46,7 +46,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
   const [initialOptionIndex, setInitialOptionIndex] = useState(0)
   const [wager, setWager] = useState(1)
   const [closeTime, setCloseTime] = useState(2)
-  const [boardSize, setBoardSize] = useState(8)
+  const [boardSize, setBoardSize] = useState(6)
 
   const resetForm = () => {
     setStep(1)
@@ -59,7 +59,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
     setInitialOptionIndex(0)
     setWager(1)
     setCloseTime(2)
-    setBoardSize(8)
+    setBoardSize(6)
   }
 
   const handleCreate = () => {
@@ -484,7 +484,12 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Board size</label>
                 <div className="mt-2 flex items-center gap-2">
-                  {[6, 8, 10, 12].map((size) => (
+                  {[
+                    { size: 4, label: '2\u00d72' },
+                    { size: 6, label: '2\u00d73' },
+                    { size: 9, label: '3\u00d73' },
+                    { size: 12, label: '3\u00d74' },
+                  ].map(({ size, label }) => (
                     <button
                       key={size}
                       onClick={() => setBoardSize(size)}
@@ -495,7 +500,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
                           : 'border-border/60 bg-card text-foreground hover:border-primary/50'
                       )}
                     >
-                      {size}
+                      {label}
                     </button>
                   ))}
                 </div>

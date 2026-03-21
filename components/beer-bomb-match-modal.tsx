@@ -447,7 +447,7 @@ export function BeerBombMatchModal({
     >
       <div className="absolute inset-0 bg-background/85 backdrop-blur-md" onClick={onClose} />
 
-      <div className="relative mb-0 w-full max-w-3xl overflow-hidden rounded-t-[2rem] border-t-3 border-x-3 border-border bg-card shadow-[0_24px_0_0_var(--border)]">
+      <div className="relative mb-0 w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-t-[2rem] border-t-3 border-x-3 border-border bg-card shadow-[0_24px_0_0_var(--border)]">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-accent to-win" />
 
         <div className="flex items-center justify-between px-5 pt-4">
