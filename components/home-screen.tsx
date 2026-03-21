@@ -15,7 +15,7 @@ interface HomeScreenProps {
   crewNetPositions: Record<string, number>
   onSelectCrew: (crewId: string) => void
   onCreateCrew: (name: string) => Promise<boolean>
-  onJoinCrew: (code: string) => void
+  onJoinCrew: (code: string) => Promise<boolean>
   notifications?: Notification[]
   onMarkRead?: () => void
   onSignOut?: () => void
@@ -63,12 +63,14 @@ export function HomeScreen({
     }
   }
 
-  const handleJoinSubmit = (e: React.FormEvent) => {
+  const handleJoinSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (joinCode.trim()) {
-      onJoinCrew(joinCode.trim().toUpperCase())
-      setJoinCode('')
-      setShowAction('none')
+      const didJoinCrew = await onJoinCrew(joinCode.trim().toUpperCase())
+      if (didJoinCrew) {
+        setJoinCode('')
+        setShowAction('none')
+      }
     }
   }
 
@@ -478,7 +480,7 @@ export function HomeScreen({
                 <div className="p-3 rounded-xl bg-loss/10 border-2 border-loss/30 flex items-center justify-between gap-2">
                   <p className="text-sm font-semibold text-loss">{mutationError}</p>
                   {onDismissError && (
-                    <button onClick={onDismissError} className="text-xs text-loss/70 font-semibold shrink-0">
+                    <button type="button" onClick={onDismissError} className="text-xs text-loss/70 font-semibold shrink-0">
                       Dismiss
                     </button>
                   )}

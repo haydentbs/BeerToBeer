@@ -50,6 +50,10 @@ const PENDING_GUEST_CLAIM_KEY = 'beerscore_pending_guest_claim'
 const ACTIVE_CREW_KEY = 'beerscore_active_crew'
 const ACTIVE_TAB_KEY = 'beerscore_active_tab'
 
+function normalizeInviteCode(value: string) {
+  return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
 function getSavedCrewId(): string | null {
   if (typeof window === 'undefined') return null
   return window.localStorage.getItem(ACTIVE_CREW_KEY)
@@ -126,6 +130,7 @@ export default function BeerScoreApp() {
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [isMutating, setIsMutating] = useState(false)
   const [isCreatingCrew, setIsCreatingCrew] = useState(false)
+  const [isJoiningCrew, setIsJoiningCrew] = useState(false)
   const [mutationError, setMutationError] = useState<string | null>(null)
   const [claimingGuestMembershipId, setClaimingGuestMembershipId] = useState<string | null>(null)
   const [authNotice, setAuthNotice] = useState<string | null>(null)
@@ -739,16 +744,32 @@ export default function BeerScoreApp() {
     return true
   }
 
-  const handleJoinCrew = (code: string) =>
-    runMutation(async () => {
+  const handleJoinCrew = async (code: string) => {
+    setIsJoiningCrew(true)
+
+    const existingCrewIds = new Set(crews.map((crew) => crew.id))
+    const normalizedCode = normalizeInviteCode(code)
+    const didJoinCrew = await runMutation(async () => {
       const payload = await mutateApp('joinCrew', { code })
       applyAppPayload(payload)
-      const normalizedCode = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
-      const joinedCrew = payload.crews.find((crew) => crew.inviteCode === normalizedCode)
+
+      const joinedCrew =
+        payload.crews.find((crew) => !existingCrewIds.has(crew.id)) ??
+        payload.crews.find((crew) => normalizeInviteCode(crew.inviteCode) === normalizedCode)
+
       if (joinedCrew) {
         handleSelectCrew(joinedCrew.id)
       }
     }, 'Crew code not found.')
+
+    if (!didJoinCrew) {
+      setIsJoiningCrew(false)
+      return false
+    }
+
+    setIsJoiningCrew(false)
+    return true
+  }
 
   const handleLeaveCrew = () => {
     if (!activeCrewId) return
@@ -938,12 +959,24 @@ export default function BeerScoreApp() {
     })
   }
 
-  if (!isAuthReady || (session && !isDataReady) || (session && isCreatingCrew)) {
+  if (!isAuthReady || (session && !isDataReady) || (session && (isCreatingCrew || isJoiningCrew))) {
     return (
       <main className="min-h-screen bg-background">
         <LoadingSpinner
-          message={isCreatingCrew ? 'Creating your crew…' : 'Checking your tab…'}
-          submessage={isCreatingCrew ? 'Getting things ready' : 'Restoring your session'}
+          message={
+            isCreatingCrew
+              ? 'Creating your crew…'
+              : isJoiningCrew
+              ? 'Joining your crew…'
+              : 'Checking your tab…'
+          }
+          submessage={
+            isCreatingCrew
+              ? 'Getting things ready'
+              : isJoiningCrew
+              ? 'Finding the right crew'
+              : 'Restoring your session'
+          }
           className="min-h-screen"
         />
       </main>
