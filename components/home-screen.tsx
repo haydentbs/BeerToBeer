@@ -14,7 +14,7 @@ interface HomeScreenProps {
   /** Per-crew all-time ledger data for computing net positions */
   crewNetPositions: Record<string, number>
   onSelectCrew: (crewId: string) => void
-  onCreateCrew: (name: string) => void
+  onCreateCrew: (name: string) => Promise<boolean>
   onJoinCrew: (code: string) => void
   notifications?: Notification[]
   onMarkRead?: () => void
@@ -52,12 +52,14 @@ export function HomeScreen({
 
   const unreadCount = notifications.filter(n => !n.read).length
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
+  const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (newCrewName.trim()) {
-      onCreateCrew(newCrewName.trim())
-      setNewCrewName('')
-      setShowAction('none')
+      const didCreateCrew = await onCreateCrew(newCrewName.trim())
+      if (didCreateCrew) {
+        setNewCrewName('')
+        setShowAction('none')
+      }
     }
   }
 
@@ -402,6 +404,17 @@ export function HomeScreen({
                 Name your crew. You'll get a code to invite friends.
               </p>
 
+              {mutationError && (
+                <div className="p-3 rounded-xl bg-loss/10 border-2 border-loss/30 flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-loss">{mutationError}</p>
+                  {onDismissError && (
+                    <button type="button" onClick={onDismissError} className="text-xs text-loss/70 font-semibold shrink-0">
+                      Dismiss
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">
                   Crew Name
@@ -409,7 +422,10 @@ export function HomeScreen({
                 <input
                   type="text"
                   value={newCrewName}
-                  onChange={(e) => setNewCrewName(e.target.value)}
+                  onChange={(e) => {
+                    setNewCrewName(e.target.value)
+                    onDismissError?.()
+                  }}
                   placeholder="The Usual Suspects"
                   className="w-full px-4 py-3 rounded-xl bg-card text-card-foreground font-semibold border-2 border-border focus:border-primary focus:outline-none transition-colors text-lg"
                   autoFocus
@@ -419,7 +435,10 @@ export function HomeScreen({
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowAction('none')}
+                  onClick={() => {
+                    setShowAction('none')
+                    onDismissError?.()
+                  }}
                   className="flex-1 py-3 rounded-xl border-2 border-border text-card-foreground font-semibold hover:bg-surface transition-colors"
                 >
                   Cancel

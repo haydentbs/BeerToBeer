@@ -125,6 +125,7 @@ export default function BeerScoreApp() {
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [isMutating, setIsMutating] = useState(false)
+  const [isCreatingCrew, setIsCreatingCrew] = useState(false)
   const [mutationError, setMutationError] = useState<string | null>(null)
   const [claimingGuestMembershipId, setClaimingGuestMembershipId] = useState<string | null>(null)
   const [authNotice, setAuthNotice] = useState<string | null>(null)
@@ -531,6 +532,20 @@ export default function BeerScoreApp() {
     }
   }, [isDataReady, activeCrewId, crews, setActiveDrinkTheme])
 
+  useEffect(() => {
+    if (!isDataReady || !activeCrewId) {
+      return
+    }
+
+    const restoredCrew = visibleCrews.find((crew) => crew.id === activeCrewId)
+    if (!restoredCrew) {
+      return
+    }
+
+    setView('crew')
+    setActiveDrinkTheme(restoredCrew.currentNight?.drinkThemeOverride ?? restoredCrew.drinkTheme ?? 'beer')
+  }, [activeCrewId, isDataReady, setActiveDrinkTheme, visibleCrews])
+
   const crewNetPositions = useMemo(() => {
     const positions: Record<string, number> = {}
     visibleCrews.forEach((crew) => {
@@ -686,18 +701,43 @@ export default function BeerScoreApp() {
     setMutationError(null)
     try {
       await fn()
+      return true
     } catch (error) {
       setMutationError(error instanceof Error ? error.message : (errorFallback ?? 'Something went wrong.'))
+      return false
     } finally {
       setIsMutating(false)
     }
   }, [])
 
-  const handleCreateCrew = (name: string) =>
-    runMutation(async () => {
+  const handleCreateCrew = async (name: string) => {
+    setIsCreatingCrew(true)
+
+    const existingCrewIds = new Set(crews.map((crew) => crew.id))
+    const didCreateCrew = await runMutation(async () => {
       const payload = await mutateApp('createCrew', { name })
       applyAppPayload(payload)
+
+      const createdCrew =
+        payload.crews.find((crew) => !existingCrewIds.has(crew.id)) ??
+        payload.crews.find((crew) => crew.name === name.trim())
+
+      if (createdCrew) {
+        setActiveCrewId(createdCrew.id)
+        setActiveTab('tonight')
+        setView('crew')
+        setActiveDrinkTheme(createdCrew.currentNight?.drinkThemeOverride ?? createdCrew.drinkTheme ?? 'beer')
+      }
     }, 'Could not create crew.')
+
+    if (!didCreateCrew) {
+      setIsCreatingCrew(false)
+      return false
+    }
+
+    setIsCreatingCrew(false)
+    return true
+  }
 
   const handleJoinCrew = (code: string) =>
     runMutation(async () => {
@@ -898,12 +938,12 @@ export default function BeerScoreApp() {
     })
   }
 
-  if (!isAuthReady || (session && !isDataReady)) {
+  if (!isAuthReady || (session && !isDataReady) || (session && isCreatingCrew)) {
     return (
       <main className="min-h-screen bg-background">
         <LoadingSpinner
-          message="Checking your tab…"
-          submessage="Restoring your session"
+          message={isCreatingCrew ? 'Creating your crew…' : 'Checking your tab…'}
+          submessage={isCreatingCrew ? 'Getting things ready' : 'Restoring your session'}
           className="min-h-screen"
         />
       </main>
