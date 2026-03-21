@@ -13,6 +13,7 @@ interface AuthActionResult {
 interface OnboardingScreenProps {
   authNotice?: string | null
   isSubmitting?: boolean
+  submittingMode?: 'guest' | 'google' | 'dev' | null
   isSupabaseConfigured: boolean
   configError?: string | null
   onGuestJoin: (name: string, crewCode: string) => Promise<AuthActionResult>
@@ -24,6 +25,7 @@ interface OnboardingScreenProps {
 export function OnboardingScreen({
   authNotice,
   isSubmitting = false,
+  submittingMode = null,
   isSupabaseConfigured,
   configError,
   onGuestJoin,
@@ -143,7 +145,7 @@ export function OnboardingScreen({
             className="w-full py-4 px-6 rounded-xl bg-primary text-primary-foreground font-display font-normal text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
           >
             <Users className="w-5 h-5" />
-            Join as Guest
+            {submittingMode === 'guest' ? 'Joining as Guest…' : 'Join as Guest'}
           </button>
 
           <div className="flex items-center gap-3 py-1">
@@ -159,7 +161,7 @@ export function OnboardingScreen({
             className="w-full py-4 px-6 rounded-xl bg-card text-card-foreground font-sans font-semibold text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
           >
             <LogIn className="w-5 h-5" />
-            {isSubmitting ? 'Opening Google…' : 'Continue with Google'}
+            {submittingMode === 'google' ? 'Opening Google…' : 'Continue with Google'}
           </button>
 
           {devAuthIdentities.length > 0 && onDevAuth && (
@@ -180,7 +182,7 @@ export function OnboardingScreen({
                     disabled={isSubmitting}
                     className="w-full rounded-xl border-2 border-border bg-card px-4 py-3 text-left text-sm font-semibold text-card-foreground transition-all hover:border-primary/50 disabled:opacity-60"
                   >
-                    Continue as {identity.label}
+                    {submittingMode === 'dev' ? `Signing in as ${identity.label}…` : `Continue as ${identity.label}`}
                   </button>
                 ))}
               </div>

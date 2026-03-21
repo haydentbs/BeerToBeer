@@ -20,6 +20,7 @@ interface AppHeaderProps {
   onBack: () => void
   onLeave?: () => void
   onSignOut?: () => void
+  onFinishAccount?: () => void
   onOpenProfile?: () => void
   onMarkNotificationsRead?: () => void
   onOpenNotification?: (notification: Notification) => void
@@ -38,6 +39,7 @@ export function AppHeader({
   onBack,
   onLeave,
   onSignOut,
+  onFinishAccount,
   onOpenProfile,
   onMarkNotificationsRead,
   onOpenNotification,
@@ -163,7 +165,10 @@ export function AppHeader({
 
                   {isGuest && (
                     <button
-                      onClick={() => setShowMenu(false)}
+                      onClick={() => {
+                        setShowMenu(false)
+                        onFinishAccount?.()
+                      }}
                       className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-surface/50 transition-colors text-primary"
                     >
                       <Settings className="w-4 h-4" />

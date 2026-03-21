@@ -237,6 +237,8 @@ interface CreateMiniGameInput {
   boardSize?: number
 }
 
+type AuthSubmittingMode = 'guest' | 'google' | 'dev' | null
+
 export default function BeerScoreApp() {
   const [session, setSession] = useState<AppSession | null>(null)
   const [view, setView] = useState<AppView>(() => getSavedRouteState().crewId ? 'crew' : 'home')
@@ -254,8 +256,10 @@ export default function BeerScoreApp() {
   const [isAuthReady, setIsAuthReady] = useState(false)
   const [isDataReady, setIsDataReady] = useState(false)
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false)
+  const [authSubmittingMode, setAuthSubmittingMode] = useState<AuthSubmittingMode>(null)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [isMutating, setIsMutating] = useState(false)
+  const [loadingCopy, setLoadingCopy] = useState<{ message: string; submessage?: string } | null>(null)
   const [isRouteRestorePending, setIsRouteRestorePending] = useState(() => Boolean(getSavedRouteState().crewId))
   const [isCreatingCrew, setIsCreatingCrew] = useState(false)
   const [isJoiningCrew, setIsJoiningCrew] = useState(false)
@@ -543,6 +547,12 @@ export default function BeerScoreApp() {
       subscription.unsubscribe()
     }
   }, [applyAuthenticatedUser, devAuthEnabled, supabaseConfigured])
+
+  useEffect(() => {
+    if (!session || isDataReady) {
+      setLoadingCopy(null)
+    }
+  }, [isDataReady, session])
 
   useEffect(() => {
     if (!session) {
@@ -880,6 +890,7 @@ export default function BeerScoreApp() {
     }
 
     setIsAuthSubmitting(true)
+    setAuthSubmittingMode('google')
     setAuthNotice(null)
     clearDevAuthCookie()
     if (preserveGuestSession) {
@@ -905,10 +916,19 @@ export default function BeerScoreApp() {
       return { message: 'Redirecting to Google…' }
     } finally {
       setIsAuthSubmitting(false)
+      setAuthSubmittingMode(null)
     }
   }
 
   const handleGuestJoin = async (name: string, crewCode: string): Promise<AuthActionResult> => {
+    setIsAuthSubmitting(true)
+    setAuthSubmittingMode('guest')
+    setAuthNotice(null)
+    setLoadingCopy({
+      message: 'Joining your crew…',
+      submessage: 'Setting up your guest tab',
+    })
+
     try {
       clearDevAuthCookie()
       const payload = await joinGuest(name, crewCode)
@@ -927,8 +947,12 @@ export default function BeerScoreApp() {
       setAuthNotice(null)
       return { message: `Playing as ${payload.session.user.name}${joinedCrew ? ` in ${joinedCrew.name}` : ''}.` }
     } catch (error) {
+      setLoadingCopy(null)
       setView('home')
       return { error: error instanceof Error ? error.message : 'Crew code not found.' }
+    } finally {
+      setIsAuthSubmitting(false)
+      setAuthSubmittingMode(null)
     }
   }
 
@@ -943,6 +967,7 @@ export default function BeerScoreApp() {
     }
 
     setIsAuthSubmitting(true)
+    setAuthSubmittingMode('dev')
     setAuthNotice(null)
     setPendingGuestClaimFlag(false)
     clearGuestSessionCookie()
@@ -964,6 +989,7 @@ export default function BeerScoreApp() {
       return { error: error instanceof Error ? error.message : 'Could not start the dev session.' }
     } finally {
       setIsAuthSubmitting(false)
+      setAuthSubmittingMode(null)
       setIsAuthReady(true)
     }
   }
@@ -1445,28 +1471,12 @@ export default function BeerScoreApp() {
     })
   }
 
-  if (!isAuthReady || (session && (!isDataReady || isRouteRestorePending)) || (session && (isCreatingCrew || isJoiningCrew))) {
+  if (!isAuthReady || (session && (!isDataReady || isRouteRestorePending))) {
     return (
       <main className="min-h-screen bg-background">
         <LoadingSpinner
-          message={
-            isCreatingCrew
-              ? 'Creating your crew…'
-              : isJoiningCrew
-              ? 'Joining your crew…'
-              : isRouteRestorePending
-              ? 'Restoring your tab…'
-              : 'Checking your tab…'
-          }
-          submessage={
-            isCreatingCrew
-              ? 'Getting things ready'
-              : isJoiningCrew
-              ? 'Finding the right crew'
-              : isRouteRestorePending
-              ? 'Opening the same crew view'
-              : 'Restoring your session'
-          }
+          message={loadingCopy?.message ?? (isRouteRestorePending ? 'Restoring your tab…' : 'Checking your tab…')}
+          submessage={loadingCopy?.submessage ?? (isRouteRestorePending ? 'Opening the same crew view' : 'Restoring your session')}
           className="min-h-screen"
         />
       </main>
@@ -1475,16 +1485,39 @@ export default function BeerScoreApp() {
 
   if (!session) {
     return (
-      <OnboardingScreen
-        authNotice={authNotice}
-        isSubmitting={isAuthSubmitting}
-        isSupabaseConfigured={supabaseConfigured}
-        configError={supabaseConfigError}
-        onGuestJoin={handleGuestJoin}
-        onGoogleAuth={() => handleGoogleAuth()}
-        devAuthIdentities={devAuthEnabled ? DEV_AUTH_IDENTITIES : []}
-        onDevAuth={devAuthEnabled ? handleDevAuth : undefined}
-      />
+      <>
+        <OnboardingScreen
+          authNotice={authNotice}
+          isSubmitting={isAuthSubmitting}
+          submittingMode={authSubmittingMode}
+          isSupabaseConfigured={supabaseConfigured}
+          configError={supabaseConfigError}
+          onGuestJoin={handleGuestJoin}
+          onGoogleAuth={() => handleGoogleAuth()}
+          devAuthIdentities={devAuthEnabled ? DEV_AUTH_IDENTITIES : []}
+          onDevAuth={devAuthEnabled ? handleDevAuth : undefined}
+        />
+        {isAuthSubmitting && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/60 backdrop-blur-sm">
+            <LoadingSpinner
+              message={
+                authSubmittingMode === 'guest'
+                  ? 'Joining your crew…'
+                  : authSubmittingMode === 'dev'
+                  ? 'Signing you in…'
+                  : 'Opening Google…'
+              }
+              submessage={
+                authSubmittingMode === 'guest'
+                  ? 'Setting up your guest tab'
+                  : authSubmittingMode === 'dev'
+                  ? 'Starting your local test session'
+                  : 'Handing off to Google sign-in'
+              }
+            />
+          </div>
+        )}
+      </>
     )
   }
 
@@ -1509,6 +1542,7 @@ export default function BeerScoreApp() {
         isMutating={isMutating}
         mutationError={mutationError}
         onDismissError={() => setMutationError(null)}
+        onFinishAccount={session.isGuest ? handleFinishAccount : undefined}
       />
     )
   }
@@ -1542,6 +1576,7 @@ export default function BeerScoreApp() {
         onBack={handleBackToHome}
         onLeave={handleLeaveCrew}
         onSignOut={handleSignOut}
+        onFinishAccount={session.isGuest ? handleFinishAccount : undefined}
         onOpenProfile={handleOpenProfile}
         onMarkNotificationsRead={() => { void handleMarkNotificationsRead() }}
         onOpenNotification={handleOpenNotification}
@@ -1682,7 +1717,22 @@ export default function BeerScoreApp() {
 
       {isMutating && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/60 backdrop-blur-sm">
-          <LoadingSpinner message="One sec…" />
+          <LoadingSpinner
+            message={
+              isCreatingCrew
+                ? 'Creating your crew…'
+                : isJoiningCrew
+                ? 'Joining your crew…'
+                : 'One sec…'
+            }
+            submessage={
+              isCreatingCrew
+                ? 'Getting things ready'
+                : isJoiningCrew
+                ? 'Finding the right crew'
+                : undefined
+            }
+          />
         </div>
       )}
     </main>

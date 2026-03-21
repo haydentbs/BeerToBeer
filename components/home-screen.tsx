@@ -27,6 +27,7 @@ interface HomeScreenProps {
   isMutating?: boolean
   mutationError?: string | null
   onDismissError?: () => void
+  onFinishAccount?: () => Promise<void> | void
 }
 
 export function HomeScreen({
@@ -48,13 +49,14 @@ export function HomeScreen({
   isMutating = false,
   mutationError = null,
   onDismissError,
+  onFinishAccount,
 }: HomeScreenProps) {
   const [showAction, setShowAction] = useState<'none' | 'create' | 'join'>('none')
   const [newCrewName, setNewCrewName] = useState('')
   const [joinCode, setJoinCode] = useState('')
   const [showNotifications, setShowNotifications] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
-  const [showGuestCreatePrompt, setShowGuestCreatePrompt] = useState(false)
+  const [guestPromptAction, setGuestPromptAction] = useState<'none' | 'create' | 'join'>('none')
 
   const liveCrews = crews.filter(c => c.currentNight)
   const otherCrews = crews.filter(c => !c.currentNight)
@@ -63,11 +65,20 @@ export function HomeScreen({
 
   const handleOpenCreate = () => {
     if (isGuest) {
-      setShowGuestCreatePrompt(true)
+      setGuestPromptAction('create')
       return
     }
 
     setShowAction('create')
+  }
+
+  const handleOpenJoin = () => {
+    if (isGuest) {
+      setGuestPromptAction('join')
+      return
+    }
+
+    setShowAction('join')
   }
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
@@ -162,6 +173,7 @@ export function HomeScreen({
                           setShowUserMenu(false)
                           onSignOut()
                         }}
+                        disabled={isSigningOut}
                         className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-surface transition-colors text-muted-foreground"
                       >
                         <LogOut className="w-4 h-4" />
@@ -232,8 +244,13 @@ export function HomeScreen({
                 <ArrowRight className="w-5 h-5" />
               </button>
               <button
-                onClick={() => setShowAction('join')}
-                className="w-full py-4 px-6 rounded-xl bg-card text-card-foreground font-bold text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all"
+                onClick={handleOpenJoin}
+                className={cn(
+                  'w-full py-4 px-6 rounded-xl font-bold text-lg border-3 border-border transition-all',
+                  isGuest
+                    ? 'bg-surface text-muted-foreground shadow-none'
+                    : 'bg-card text-card-foreground shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1'
+                )}
               >
                 Join with Code
               </button>
@@ -444,8 +461,13 @@ export function HomeScreen({
               Create
             </button>
             <button
-              onClick={() => setShowAction('join')}
-              className="flex-1 py-3 px-4 rounded-xl bg-card text-card-foreground font-semibold border-2 border-border active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              onClick={handleOpenJoin}
+              className={cn(
+                'flex-1 py-3 px-4 rounded-xl font-semibold border-2 border-border transition-all flex items-center justify-center gap-2',
+                isGuest
+                  ? 'bg-surface text-muted-foreground'
+                  : 'bg-card text-card-foreground active:scale-[0.98]'
+              )}
             >
               <Users className="w-4 h-4" />
               Join
@@ -455,25 +477,41 @@ export function HomeScreen({
         )}
       </div>
 
-      {showGuestCreatePrompt && (
+      {guestPromptAction !== 'none' && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
           <button
             type="button"
             className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-            onClick={() => setShowGuestCreatePrompt(false)}
-            aria-label="Close guest create prompt"
+            onClick={() => setGuestPromptAction('none')}
+            aria-label="Close guest account prompt"
           />
           <div className="relative w-full max-w-sm rounded-3xl border-3 border-border bg-card p-6 shadow-brutal">
-            <h2 className="text-xl font-bold text-card-foreground">Create an account first</h2>
+            <h2 className="text-xl font-bold text-card-foreground">
+              {guestPromptAction === 'join' ? 'Finish your account to join more crews' : 'Create an account first'}
+            </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Please create an account to create a crew.
+              {guestPromptAction === 'join'
+                ? 'Guest tabs can only join a crew during onboarding. Finish your account to join more crews without losing your current spot.'
+                : 'Guest tabs can play in the crew they joined, but creating a new crew needs a saved account.'}
             </p>
+            {onFinishAccount && (
+              <button
+                type="button"
+                onClick={() => {
+                  setGuestPromptAction('none')
+                  void onFinishAccount()
+                }}
+                className="mt-5 w-full rounded-xl border-2 border-border bg-primary px-4 py-3 font-semibold text-primary-foreground"
+              >
+                Finish Account
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setShowGuestCreatePrompt(false)}
-              className="mt-5 w-full rounded-xl border-2 border-border bg-primary px-4 py-3 font-semibold text-primary-foreground"
+              onClick={() => setGuestPromptAction('none')}
+              className="mt-3 w-full rounded-xl border-2 border-border px-4 py-3 font-semibold text-card-foreground"
             >
-              Okay
+              Not now
             </button>
           </div>
         </div>
