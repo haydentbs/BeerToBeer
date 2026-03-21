@@ -119,6 +119,7 @@ export default function BeerScoreApp() {
   const [crewDataById, setCrewDataById] = useState<Record<string, { tonightLedger: any[]; allTimeLedger: any[]; leaderboard: any[] }>>({})
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [claimableGuests, setClaimableGuests] = useState<ClaimableGuest[]>([])
+  const [pendingCrewThemeById, setPendingCrewThemeById] = useState<Record<string, DrinkTheme>>({})
   const [isAuthReady, setIsAuthReady] = useState(false)
   const [isDataReady, setIsDataReady] = useState(false)
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false)
@@ -145,12 +146,14 @@ export default function BeerScoreApp() {
       setCrewDataById({})
       setNotifications([])
       setClaimableGuests([])
+      setPendingCrewThemeById({})
       setView('home')
       setActiveCrewId(null)
       return
     }
 
     setSession(buildAppSession(authUser))
+    setPendingCrewThemeById({})
     setView('home')
   }, [])
 
@@ -159,6 +162,20 @@ export default function BeerScoreApp() {
     setCrewDataById(payload.crewDataById)
     setNotifications(payload.notifications)
     setClaimableGuests(payload.claimableGuests ?? [])
+    setPendingCrewThemeById((current) => {
+      if (!Object.keys(current).length) {
+        return current
+      }
+
+      const next = { ...current }
+      for (const crew of payload.crews) {
+        if (next[crew.id] && next[crew.id] === (crew.drinkTheme ?? 'beer')) {
+          delete next[crew.id]
+        }
+      }
+
+      return next
+    })
     if (payload.viewerUser) {
       setSession((current) => {
         if (!current) {
@@ -189,6 +206,24 @@ export default function BeerScoreApp() {
       })
     }
   }, [])
+
+  const visibleCrews = useMemo(() => {
+    if (!Object.keys(pendingCrewThemeById).length) {
+      return crews
+    }
+
+    return crews.map((crew) => {
+      const pendingTheme = pendingCrewThemeById[crew.id]
+      if (!pendingTheme) {
+        return crew
+      }
+
+      return {
+        ...crew,
+        drinkTheme: pendingTheme,
+      }
+    })
+  }, [crews, pendingCrewThemeById])
 
   useEffect(() => {
     let isMounted = true
@@ -356,7 +391,7 @@ export default function BeerScoreApp() {
     }
   }, [applyAppPayload, sessionLoadKey])
 
-  const activeCrew = crews.find((crew) => crew.id === activeCrewId)
+  const activeCrew = visibleCrews.find((crew) => crew.id === activeCrewId)
   const hasLiveMiniGameMatch = Boolean(
     activeCrew?.currentNight?.miniGameMatches.some((match) => match.status === 'pending' || match.status === 'active')
   )
@@ -498,7 +533,7 @@ export default function BeerScoreApp() {
 
   const crewNetPositions = useMemo(() => {
     const positions: Record<string, number> = {}
-    crews.forEach((crew) => {
+    visibleCrews.forEach((crew) => {
       const data = crewDataById[crew.id]
       if (data) {
         positions[crew.id] = session ? getNetPosition(session.user.id, data.allTimeLedger) : 0
@@ -507,7 +542,7 @@ export default function BeerScoreApp() {
       }
     })
     return positions
-  }, [crewDataById, crews, session])
+  }, [crewDataById, session, visibleCrews])
 
   const activeCrewData = activeCrewId ? crewDataById[activeCrewId] : null
   const activeNightWithMiniGames = activeCrew?.currentNight ?? null
@@ -634,7 +669,7 @@ export default function BeerScoreApp() {
     setActiveTab('tonight')
     setView('crew')
     // Apply night theme override if active, otherwise crew's drink theme
-    const crew = crews.find((c) => c.id === crewId)
+    const crew = visibleCrews.find((c) => c.id === crewId)
     const effectiveTheme = crew?.currentNight?.drinkThemeOverride ?? crew?.drinkTheme ?? 'beer'
     setActiveDrinkTheme(effectiveTheme)
   }
@@ -706,8 +741,26 @@ export default function BeerScoreApp() {
 
   const handleChangeDrinkTheme = (theme: DrinkTheme) => {
     if (activeCrewId) {
-      void mutateApp('changeDrinkTheme', { crewId: activeCrewId, theme }).then(applyAppPayload)
+      const crewId = activeCrewId
+      const previousTheme = activeCrew?.currentNight?.drinkThemeOverride ?? activeCrew?.drinkTheme ?? 'beer'
+
+      setPendingCrewThemeById((current) => ({
+        ...current,
+        [crewId]: theme,
+      }))
       setActiveDrinkTheme(theme)
+
+      void mutateApp('changeDrinkTheme', { crewId, theme })
+        .then(applyAppPayload)
+        .catch((error) => {
+          setPendingCrewThemeById((current) => {
+            const next = { ...current }
+            delete next[crewId]
+            return next
+          })
+          setActiveDrinkTheme(previousTheme)
+          setAuthNotice(error instanceof Error ? error.message : 'Could not update the crew theme.')
+        })
     }
   }
 
@@ -886,7 +939,7 @@ export default function BeerScoreApp() {
       <HomeScreen
         user={session.user}
         userEmail={session.email}
-        crews={crews}
+        crews={visibleCrews}
         crewNetPositions={crewNetPositions}
         onSelectCrew={handleSelectCrew}
         onCreateCrew={handleCreateCrew}
@@ -971,6 +1024,7 @@ export default function BeerScoreApp() {
                 crew={activeCrew}
                 currentUserId={session.user.id}
                 currentMembershipId={session.user.membershipId ?? null}
+                isThemeSaving={Boolean(activeCrewId && pendingCrewThemeById[activeCrewId])}
                 onStartNight={handleStartNight}
                 onLeaveNight={handleLeaveNight}
                 onRejoinNight={handleRejoinNight}
@@ -991,7 +1045,7 @@ export default function BeerScoreApp() {
         onClose={() => setShowCreateBet(false)}
         onCreate={handleCreateBet}
         onCreateMiniGame={handleCreateMiniGameChallenge}
-        members={activeCrew?.members ?? crews[0]?.members ?? [session.user]}
+        members={activeCrew?.members ?? visibleCrews[0]?.members ?? [session.user]}
       />
 
       <ProfileModal
@@ -1001,22 +1055,22 @@ export default function BeerScoreApp() {
         userEmail={session.email}
         userInitials={session.user.initials || session.user.name.slice(0, 2).toUpperCase()}
         isGuest={session.isGuest}
-        crews={crews.map((crew) => ({
+        crews={visibleCrews.map((crew) => ({
           name: crew.name,
           netPosition: getNetPosition(session.user.id, crewDataById[crew.id]?.allTimeLedger ?? []),
         }))}
         stats={{
-          totalBetsPlaced: crews.reduce((sum, crew) => {
+          totalBetsPlaced: visibleCrews.reduce((sum, crew) => {
             const nights = crew.pastNights.length + (crew.currentNight ? 1 : 0)
             return sum + nights * 3 // mock estimate
           }, 0),
           totalWins: 12,
           winRate: 0.58,
-          totalDrinksWon: crews.reduce((sum, crew) => {
+          totalDrinksWon: visibleCrews.reduce((sum, crew) => {
             const net = getNetPosition(session.user.id, crewDataById[crew.id]?.allTimeLedger ?? [])
             return sum + Math.max(0, net)
           }, 0),
-          totalDrinksLost: crews.reduce((sum, crew) => {
+          totalDrinksLost: visibleCrews.reduce((sum, crew) => {
             const net = getNetPosition(session.user.id, crewDataById[crew.id]?.allTimeLedger ?? [])
             return sum + Math.abs(Math.min(0, net))
           }, 0),

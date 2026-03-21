@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useState } from 'react'
 import {
   type AppMode,
   type DrinkTheme,
@@ -56,8 +56,8 @@ export function BeerScoreThemeProvider({ children }: BeerScoreThemeProviderProps
     }
   }, [])
 
-  // Apply CSS variables whenever mode or drink theme changes
-  useEffect(() => {
+  // Apply CSS variables before paint so theme changes feel immediate.
+  useLayoutEffect(() => {
     const effectiveTheme = themesDisabled ? 'beer' : activeDrinkTheme
     const vars = generateThemeVars(mode, effectiveTheme)
     const root = document.documentElement
