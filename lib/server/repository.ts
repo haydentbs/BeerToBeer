@@ -632,6 +632,7 @@ function buildMiniGameMatch(match: any, usersByMembershipId: Map<string, User>):
   return {
     id: match.id,
     gameKey: match.game_key,
+    betId: match.bet_id ?? undefined,
     title: match.title,
     status: match.status,
     challenger,
@@ -656,6 +657,7 @@ function buildMiniGameMatch(match: any, usersByMembershipId: Map<string, User>):
 function buildMiniGameOutcomeEntries(matches: any[]): Array<{ membershipId: string; nightId: string | null; netResult: number }> {
   return matches
     .filter((match) =>
+      !match.bet_id &&
       match.status === 'completed' &&
       match.winner_membership_id &&
       match.loser_membership_id &&
@@ -1624,6 +1626,178 @@ async function persistVoidBet(
     payload: { betId: bet.id, winningOptionId: null, voidReason: reason },
     excludeMembershipId: actorMembershipId,
   })
+}
+
+async function createLinkedMiniGameBet(
+  match: any,
+  title: string,
+  stake: number,
+  challengerLabel: string,
+  opponentLabel: string
+) {
+  const supabase = getServiceRoleClient()
+  const closesAt = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString()
+
+  const { data: bet, error: betError } = await supabase
+    .from('bets')
+    .insert({
+      crew_id: match.crew_id,
+      night_id: match.night_id,
+      type: 'h2h',
+      subtype: null,
+      title,
+      description: 'Beer Bomb challenge with side bets.',
+      status: 'open',
+      created_by_membership_id: match.created_by_membership_id,
+      challenger_membership_id: match.opponent_membership_id,
+      closes_at: closesAt,
+    })
+    .select()
+    .single()
+
+  if (betError) throw betError
+
+  const optionRows = [
+    {
+      bet_id: bet.id,
+      label: challengerLabel,
+      sort_order: 0,
+    },
+    {
+      bet_id: bet.id,
+      label: opponentLabel,
+      sort_order: 1,
+    },
+  ]
+
+  const { data: createdOptions, error: optionError } = await supabase
+    .from('bet_options')
+    .insert(optionRows)
+    .select()
+
+  if (optionError) throw optionError
+
+  const creatorOption = createdOptions?.find((option: any) => option.sort_order === 0)
+  const challengerOption = createdOptions?.find((option: any) => option.sort_order === 1)
+
+  if (!creatorOption || !challengerOption) {
+    throw new Error('Could not create linked mini-game bet options.')
+  }
+
+  const { error: wagerError } = await supabase.from('wagers').upsert([
+    {
+      bet_id: bet.id,
+      bet_option_id: creatorOption.id,
+      membership_id: match.created_by_membership_id,
+      drinks: stake,
+    },
+    {
+      bet_id: bet.id,
+      bet_option_id: challengerOption.id,
+      membership_id: match.opponent_membership_id,
+      drinks: stake,
+    },
+  ], { onConflict: 'bet_id,membership_id' })
+
+  if (wagerError) throw wagerError
+
+  await supabase.from('bet_status_events').insert({
+    bet_id: bet.id,
+    actor_membership_id: match.created_by_membership_id,
+    from_status: null,
+    to_status: 'open',
+    note: 'Bet created from Beer Bomb challenge acceptance.',
+    metadata: { source: 'mini_game_acceptance', matchId: match.id, gameKey: match.game_key },
+  })
+
+  const { error: matchUpdateError } = await supabase
+    .from('mini_game_matches')
+    .update({
+      bet_id: bet.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', match.id)
+
+  if (matchUpdateError) throw matchUpdateError
+
+  return {
+    bet,
+    creatorOptionId: creatorOption.id as string,
+    challengerOptionId: challengerOption.id as string,
+  }
+}
+
+async function proposeMiniGameMatchResult(
+  actorMembershipId: string,
+  match: any,
+  winnerMembershipId: string
+) {
+  if (!match.bet_id) {
+    return false
+  }
+
+  const supabase = getServiceRoleClient()
+  const [{ data: bet, error: betError }, { data: options, error: optionsError }] = await Promise.all([
+    supabase.from('bets').select('*').eq('id', match.bet_id).single(),
+    supabase.from('bet_options').select('id, sort_order').eq('bet_id', match.bet_id).order('sort_order', { ascending: true }),
+  ])
+
+  if (betError) throw betError
+  if (optionsError) throw optionsError
+  if (bet.status !== 'open') {
+    return true
+  }
+
+  const winnerOptionId =
+    winnerMembershipId === bet.created_by_membership_id
+      ? options?.find((option: any) => option.sort_order === 0)?.id
+      : options?.find((option: any) => option.sort_order === 1)?.id
+
+  if (!winnerOptionId) {
+    throw new Error('Could not determine the winning option for the linked mini-game bet.')
+  }
+
+  const { domainBet } = await loadBetResolutionContext(match.bet_id)
+  const preview = resolveBetWithParimutuel(domainBet, winnerOptionId)
+
+  if (preview.status === 'void') {
+    await persistVoidBet(
+      actorMembershipId,
+      bet,
+      preview.voidReason ?? 'No opposing action',
+      'proposal',
+      'Linked mini-game bet voided when the result was proposed.'
+    )
+    return true
+  }
+
+  await supabase.from('bets').update({
+    status: 'pending_result',
+    pending_result_option_id: winnerOptionId,
+    pending_result_at: new Date().toISOString(),
+    winning_option_id: null,
+    resolved_at: null,
+    void_reason: null,
+  }).eq('id', match.bet_id)
+
+  await supabase.from('bet_status_events').insert({
+    bet_id: match.bet_id,
+    actor_membership_id: actorMembershipId,
+    from_status: bet.status,
+    to_status: 'pending_result',
+    note: 'Result proposed from Beer Bomb match completion.',
+    metadata: { source: 'mini_game_match', matchId: match.id, gameKey: match.game_key, winnerMembershipId },
+  })
+
+  await notifyCrewMembers(match.crew_id, {
+    type: 'bet_created',
+    title: `${match.title} result proposed`,
+    message: `A result is pending confirmation for ${match.title}.`,
+    payload: { betId: match.bet_id, matchId: match.id, pendingResultOptionId: winnerOptionId },
+    excludeMembershipId: actorMembershipId,
+  })
+
+  return true
 }
 
 async function resolveBetAndPersist(
@@ -3251,28 +3425,38 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
       const startingPlayerMembershipId =
         Math.random() < 0.5 ? match.created_by_membership_id : match.opponent_membership_id
+      const acceptedAt = new Date().toISOString()
 
       const { error: acceptError } = await supabase
         .from('mini_game_matches')
         .update({
           status: 'active',
           agreed_wager: match.proposed_wager,
-          accepted_at: new Date().toISOString(),
+          accepted_at: acceptedAt,
           starting_player_membership_id: startingPlayerMembershipId,
           current_turn_membership_id: startingPlayerMembershipId,
           declined_at: null,
           cancelled_at: null,
           completed_at: null,
-          updated_at: new Date().toISOString(),
+          updated_at: acceptedAt,
         })
         .eq('id', match.id)
         .eq('status', 'pending')
 
       if (acceptError) throw acceptError
 
+      const linkedBet = await createLinkedMiniGameBet(
+        match,
+        match.title,
+        Number(match.proposed_wager),
+        `${challengerUser.name} wins`,
+        `${opponentUser.name} wins`
+      )
+
       await recordMiniGameMatchEvent(match.id, actorMembership.id, 'challenge_accepted', {
         startingPlayerMembershipId,
         agreedWager: match.proposed_wager,
+        betId: linkedBet.bet.id,
       })
       await recordAuditLog(payload.crewId, actorMembership.id, 'mini_game_challenge_accepted', 'mini_game_match', match.id, {
         startingPlayerMembershipId,
@@ -3287,6 +3471,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
         message: `${startingPlayerUser.name} goes first for ${formatDrinks(match.proposed_wager)} drinks.`,
         payload: {
           matchId: match.id,
+          betId: linkedBet.bet.id,
           gameKey: match.game_key,
           status: 'active',
           agreedWager: Number(match.proposed_wager),
@@ -3366,22 +3551,27 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
           loserMembershipId,
           slotIndex,
           drinks,
+          betId: match.bet_id ?? null,
         })
 
-        await supabase.from('ledger_events').insert({
-          crew_id: payload.crewId,
-          night_id: match.night_id,
-          bet_id: null,
-          from_membership_id: loserMembershipId,
-          to_membership_id: winnerMembershipId,
-          event_type: 'mini_game_result',
-          drinks,
-          metadata: {
-            matchId: match.id,
-            gameKey: match.game_key,
-            slotIndex,
-          },
-        })
+        if (match.bet_id) {
+          await proposeMiniGameMatchResult(actorMembership.id, match, winnerMembershipId)
+        } else {
+          await supabase.from('ledger_events').insert({
+            crew_id: payload.crewId,
+            night_id: match.night_id,
+            bet_id: null,
+            from_membership_id: loserMembershipId,
+            to_membership_id: winnerMembershipId,
+            event_type: 'mini_game_result',
+            drinks,
+            metadata: {
+              matchId: match.id,
+              gameKey: match.game_key,
+              slotIndex,
+            },
+          })
+        }
 
         await recordAuditLog(payload.crewId, actorMembership.id, 'mini_game_completed', 'mini_game_match', match.id, {
           slotIndex,
@@ -3393,9 +3583,12 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
         await notifyCrewMembers(payload.crewId, {
           type: 'challenge',
           title: `${winnerUser.name} won Beer Bomb`,
-          message: `${loserUser.name} hit the bomb for ${formatDrinks(drinks)} drinks.`,
+          message: match.bet_id
+            ? `${loserUser.name} hit the bomb. Side-bet settlement is pending confirmation.`
+            : `${loserUser.name} hit the bomb for ${formatDrinks(drinks)} drinks.`,
           payload: {
             matchId: match.id,
+            betId: match.bet_id ?? undefined,
             gameKey: match.game_key,
             status: 'completed',
             slotIndex,

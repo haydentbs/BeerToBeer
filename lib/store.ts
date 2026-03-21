@@ -70,6 +70,7 @@ export type BeerBombSlotState = 'idle' | 'draining' | 'safe-empty' | 'bomb-hit'
 export interface MiniGameMatch {
   id: string
   gameKey: MiniGameKey
+  betId?: string
   title: string
   status: MiniGameMatchStatus
   challenger: User

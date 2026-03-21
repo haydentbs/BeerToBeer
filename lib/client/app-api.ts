@@ -31,6 +31,7 @@ function reviveCrew(crew: any): Crew {
           bets: (crew.currentNight.bets ?? []).map(reviveBet),
           miniGameMatches: (crew.currentNight.miniGameMatches ?? []).map((match: any) => ({
             ...match,
+            betId: match.betId ?? undefined,
             createdAt: new Date(match.createdAt),
             updatedAt: new Date(match.updatedAt),
             acceptedAt: match.acceptedAt ? new Date(match.acceptedAt) : null,

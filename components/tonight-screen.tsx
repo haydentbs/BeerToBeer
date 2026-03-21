@@ -13,6 +13,47 @@ import { useTheme } from './theme-provider'
 import type { Bet, Night } from '@/lib/store'
 import { useCurrentUser } from '@/lib/current-user'
 
+const DEV_SOLO_BEER_BOMB_ENABLED = process.env.NODE_ENV !== 'production'
+
+function createSoloBeerBombMatch(currentUser: ReturnType<typeof useCurrentUser>): BeerBombMatch {
+  const now = new Date()
+  const membershipId = currentUser.membershipId ?? currentUser.id
+
+  return {
+    id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `solo-beer-bomb-${Date.now()}`,
+    gameKey: 'beer_bomb',
+    isDevSolo: true,
+    title: 'Beer Bomb Solo Test',
+    status: 'active',
+    proposedWager: 1,
+    agreedWager: 1,
+    boardSize: 8,
+    bombSlotIndex: Math.floor(Math.random() * 8),
+    revealedSlotIndices: [],
+    currentTurnMembershipId: membershipId,
+    challenger: {
+      id: currentUser.id,
+      membershipId,
+      name: currentUser.name,
+      initials: currentUser.initials,
+      avatar: currentUser.avatar,
+    },
+    opponent: {
+      id: 'beer-bomb-house',
+      membershipId: 'beer-bomb-house',
+      name: 'The House',
+      initials: 'TH',
+      avatar: '',
+    },
+    winnerMembershipId: null,
+    loserMembershipId: null,
+    createdAt: now,
+    updatedAt: now,
+    acceptedAt: now,
+    completedAt: null,
+  }
+}
+
 interface TonightScreenProps {
   night: Night
   onWager: (betId: string, optionId: string, drinks: number) => void
@@ -40,6 +81,33 @@ export function TonightScreen({
   const resolvedBets = night.bets.filter((bet) => ['resolved', 'void', 'cancelled'].includes(bet.status))
   const totalPool = night.bets.reduce((acc, bet) => acc + bet.totalPool, 0)
 
+  const handleStartSoloBeerBomb = () => {
+    setSelectedBeerBombMatch(createSoloBeerBombMatch(currentUser))
+  }
+
+  const handleBeerBombTurnWithDevSupport = async (matchId: string, slotIndex: number) => {
+    const activeMatch = selectedBeerBombMatch
+    if (activeMatch?.id === matchId && activeMatch.isDevSolo) {
+      const hitBomb = activeMatch.bombSlotIndex === slotIndex
+      const membershipId = currentUser.membershipId ?? currentUser.id
+      const nextUpdatedAt = new Date()
+
+      setSelectedBeerBombMatch({
+        ...activeMatch,
+        revealedSlotIndices: [...activeMatch.revealedSlotIndices, slotIndex],
+        status: hitBomb ? 'completed' : 'active',
+        currentTurnMembershipId: hitBomb ? null : membershipId,
+        winnerMembershipId: hitBomb ? activeMatch.opponent.membershipId : null,
+        loserMembershipId: hitBomb ? membershipId : null,
+        completedAt: hitBomb ? nextUpdatedAt : null,
+        updatedAt: nextUpdatedAt,
+      })
+      return
+    }
+
+    await onBeerBombTurn(matchId, slotIndex)
+  }
+
   return (
     <>
       <div className="space-y-5 px-4 pb-24">
@@ -64,7 +132,17 @@ export function TonightScreen({
               <Bomb className="h-4 w-4 text-primary" />
               Beer Bomb
             </h2>
-            <span className="text-xs text-muted-foreground">{miniGameMatches.length} challenges</span>
+            <div className="flex items-center gap-2">
+              {DEV_SOLO_BEER_BOMB_ENABLED && (
+                <button
+                  onClick={handleStartSoloBeerBomb}
+                  className="rounded-full border-2 border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-primary transition-colors hover:bg-primary/15"
+                >
+                  Solo test
+                </button>
+              )}
+              <span className="text-xs text-muted-foreground">{miniGameMatches.length} challenges</span>
+            </div>
           </div>
 
           {miniGameMatches.length > 0 ? (
@@ -155,7 +233,7 @@ export function TonightScreen({
         onAccept={onBeerBombAccept}
         onDecline={onBeerBombDecline}
         onCancel={onBeerBombCancel}
-        onTakeTurn={onBeerBombTurn}
+        onTakeTurn={handleBeerBombTurnWithDevSupport}
       />
     </>
   )
