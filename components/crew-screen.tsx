@@ -11,6 +11,7 @@ interface CrewScreenProps {
   crew: Crew
   currentUserId: string
   currentMembershipId?: string | null
+  isThemeSaving?: boolean
   onStartNight: (nightThemeOverride?: DrinkTheme) => void
   onLeaveNight: () => void
   onRejoinNight: () => void
@@ -21,7 +22,7 @@ interface CrewScreenProps {
   onChangeDrinkTheme: (theme: DrinkTheme) => void
 }
 
-export function CrewScreen({ crew, currentUserId, currentMembershipId = null, onStartNight, onLeaveNight, onRejoinNight, onRenameCrew, onKickMember, onDeleteCrew, onLeaveCrew, onChangeDrinkTheme }: CrewScreenProps) {
+export function CrewScreen({ crew, currentUserId, currentMembershipId = null, isThemeSaving = false, onStartNight, onLeaveNight, onRejoinNight, onRenameCrew, onKickMember, onDeleteCrew, onLeaveCrew, onChangeDrinkTheme }: CrewScreenProps) {
   const [showInvite, setShowInvite] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showRename, setShowRename] = useState(false)
@@ -400,17 +401,23 @@ export function CrewScreen({ crew, currentUserId, currentMembershipId = null, on
               {/* Drink Theme Picker (creator only) */}
               {isCreator && (
                 <div className="p-3 rounded-xl bg-card border-2 border-border space-y-2">
-                  <div className="flex items-center gap-2 px-1">
+                  <div className="flex items-center justify-between gap-2 px-1">
+                    <div className="flex items-center gap-2">
                     <Palette className="h-4 w-4 text-muted-foreground" />
                     <span className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Drink Theme</span>
+                    </div>
+                    {isThemeSaving && (
+                      <span className="text-[11px] font-semibold text-muted-foreground">Saving…</span>
+                    )}
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     {(Object.entries(DRINK_THEMES) as [DrinkTheme, typeof DRINK_THEMES[DrinkTheme]][]).map(([key, theme]) => (
                       <button
                         key={key}
                         onClick={() => onChangeDrinkTheme(key)}
+                        disabled={isThemeSaving}
                         className={cn(
-                          'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all text-center',
+                          'flex flex-col items-center gap-1 p-2.5 rounded-lg border-2 transition-all text-center disabled:opacity-70 disabled:cursor-wait',
                           (crew.drinkTheme ?? 'beer') === key
                             ? 'border-primary bg-primary/10'
                             : 'border-border bg-surface/50 hover:border-primary/50'
