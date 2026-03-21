@@ -180,6 +180,12 @@ function getMemberLabel(match: BeerBombMatch, membershipId: string | null) {
   return 'Spectator'
 }
 
+function getBeerBombGridColumns(boardSize: number) {
+  if (boardSize <= 4) return 2
+  if (boardSize <= 9) return 3
+  return 4
+}
+
 function MiniGameStatusBadge({
   phase,
   currentMembershipId,
@@ -209,11 +215,17 @@ function MiniGameStatusBadge({
 export function BeerBombMatchCard({ match, linkedBet, currentMembershipId, onOpen }: BeerBombMatchCardProps) {
   const phase = getMatchPhase(match, currentMembershipId)
   const wager = match.agreedWager ?? match.proposedWager
-  const slots = Array.from({ length: match.boardSize }, (_, index) => {
-    const isRevealed = match.revealedSlotIndices.includes(index)
-    const isBomb = index === match.bombSlotIndex
-    return { index, isRevealed, isBomb }
-  })
+  const isCompleted = match.status === 'completed'
+  const revealedCount = match.revealedSlotIndices.length
+  const statusDetail = isCompleted
+    ? `${revealedCount} beers revealed`
+    : match.status === 'active'
+    ? `${revealedCount} beers tapped`
+    : match.status === 'pending'
+    ? 'Waiting for response'
+    : match.status === 'declined'
+    ? 'Challenge declined'
+    : 'Challenge cancelled'
 
   return (
     <button
@@ -246,36 +258,22 @@ export function BeerBombMatchCard({ match, linkedBet, currentMembershipId, onOpe
             )}
             <span className="text-xs text-muted-foreground">{formatRelativeTime(match.updatedAt)}</span>
           </div>
-        </div>
-        <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
-      </div>
-
-      <div className="mt-4 grid grid-cols-8 gap-1">
-        {slots.map((slot) => (
-          <div
-            key={slot.index}
-            className={cn(
-              'aspect-square rounded-lg border transition-all',
-              slot.isRevealed
-                ? slot.isBomb
-                  ? 'border-loss/60 bg-loss/15'
-                  : 'border-win/40 bg-win/15'
-                : 'border-border bg-surface/80'
-            )}
-          >
-            <div className="flex h-full items-center justify-center">
-              {slot.isRevealed ? (
-                slot.isBomb ? (
-                  <Bomb className="h-3.5 w-3.5 text-loss" />
-                ) : (
-                  <span className="text-[10px] font-black uppercase tracking-wide text-win">Safe</span>
-                )
-              ) : (
-                <span className="text-[9px] font-black uppercase tracking-wide text-muted-foreground">{slot.index + 1}</span>
-              )}
+          <div className="mt-4 rounded-2xl border-2 border-border bg-surface/70 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Players</p>
+                <p className="mt-1 text-sm font-semibold text-card-foreground">
+                  {match.challenger.name} vs {match.opponent.name}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Overview</p>
+                <p className="mt-1 text-sm font-semibold text-card-foreground">{statusDetail}</p>
+              </div>
             </div>
           </div>
-        ))}
+        </div>
+        <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
       </div>
     </button>
   )
@@ -348,6 +346,7 @@ export function BeerBombMatchModal({
       sideBettorCount: sideWagers.length,
     }
   }) ?? []
+  const gridColumns = getBeerBombGridColumns(match.boardSize)
 
   const boardSlots = Array.from({ length: match.boardSize }, (_, index) => {
     const revealed = match.revealedSlotIndices.includes(index)
@@ -674,7 +673,10 @@ export function BeerBombMatchModal({
               </div>
 
               <div className="mt-10 flex justify-center">
-                <div className="grid w-full max-w-4xl grid-cols-8 gap-1.5 sm:gap-3">
+                <div
+                  className="grid w-full max-w-2xl gap-1.5 sm:gap-3"
+                  style={{ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }}
+                >
                   {boardSlots.map((slot, index) => {
                     const locked = !canActOnBoard || slot.state !== 'idle'
                     const revealed = slot.state === 'safe-empty' || slot.state === 'bomb-hit'
@@ -693,9 +695,6 @@ export function BeerBombMatchModal({
                           slot.state === 'bomb-hit' && 'border-loss/70 bg-loss/15',
                           slot.state === 'safe-empty' && 'border-win/50 bg-win/10'
                         )}
-                        style={{
-                          transform: `translateY(${Math.abs(index - (match.boardSize - 1) / 2) * 1.5}px)`,
-                        }}
                       >
                         <div
                           className={cn(

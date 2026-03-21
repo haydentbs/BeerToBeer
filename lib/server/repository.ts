@@ -1931,35 +1931,25 @@ async function proposeMiniGameMatchResult(
       actorMembershipId,
       bet,
       preview.voidReason ?? 'No opposing action',
-      'proposal',
-      'Linked mini-game bet voided when the result was proposed.'
+      'mini_game_auto',
+      'Linked mini-game bet voided when Beer Bomb completed.'
     )
     return true
   }
 
-  await supabase.from('bets').update({
-    status: 'pending_result',
-    pending_result_option_id: winnerOptionId,
-    pending_result_at: new Date().toISOString(),
-    winning_option_id: null,
-    resolved_at: null,
-    void_reason: null,
-  }).eq('id', match.bet_id)
-
-  await supabase.from('bet_status_events').insert({
-    bet_id: match.bet_id,
-    actor_membership_id: actorMembershipId,
-    from_status: bet.status,
-    to_status: 'pending_result',
-    note: 'Result proposed from Beer Bomb match completion.',
-    metadata: { source: 'mini_game_match', matchId: match.id, gameKey: match.game_key, winnerMembershipId },
-  })
+  await resolveBetAndPersist(
+    actorMembershipId,
+    match.bet_id,
+    winnerOptionId,
+    'mini_game_auto',
+    'Linked mini-game bet resolved automatically from Beer Bomb completion.'
+  )
 
   await notifyCrewMembers(match.crew_id, {
     type: 'bet_created',
-    title: `${match.title} result proposed`,
-    message: `A result is pending confirmation for ${match.title}.`,
-    payload: { betId: match.bet_id, matchId: match.id, pendingResultOptionId: winnerOptionId },
+    title: `${match.title} settled`,
+    message: `The Beer Bomb result automatically settled ${match.title}.`,
+    payload: { betId: match.bet_id, matchId: match.id, winningOptionId: winnerOptionId },
     excludeMembershipId: actorMembershipId,
   })
 
