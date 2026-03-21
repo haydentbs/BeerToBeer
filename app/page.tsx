@@ -1881,6 +1881,7 @@ export default function BeerScoreApp() {
         isOpen={showCreateBet}
         onClose={() => setShowCreateBet(false)}
         onCreate={handleCreateBet}
+        onCreateMiniGame={handleCreateMiniGameChallenge}
         members={activeCrew?.members ?? visibleCrews[0]?.members ?? [session.user]}
       />
 

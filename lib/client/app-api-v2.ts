@@ -279,20 +279,32 @@ export async function mutateApp(action: string, payload: Record<string, any>) {
   }
 }
 
-export async function createMiniGameChallenge(_payload: Record<string, any>): Promise<CommandResponse> {
-  throw new Error('Beer Bomb is disabled in Backend V2.')
+export async function createMiniGameChallenge(payload: Record<string, any>): Promise<CommandResponse> {
+  return reviveCommandResponse(await apiFetch<CommandResponse>(`/api/v2/crews/${payload.crewId}/mini-games/beer-bomb`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }))
 }
 
-export async function respondToMiniGameChallenge(_payload: Record<string, any>): Promise<CommandResponse> {
-  throw new Error('Beer Bomb is disabled in Backend V2.')
+export async function respondToMiniGameChallenge(payload: Record<string, any>): Promise<CommandResponse> {
+  return reviveCommandResponse(await apiFetch<CommandResponse>(`/api/v2/mini-games/matches/${payload.matchId}/respond`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }))
 }
 
-export async function takeMiniGameTurn(_payload: Record<string, any>): Promise<CommandResponse> {
-  throw new Error('Beer Bomb is disabled in Backend V2.')
+export async function takeMiniGameTurn(payload: Record<string, any>): Promise<CommandResponse> {
+  return reviveCommandResponse(await apiFetch<CommandResponse>(`/api/v2/mini-games/matches/${payload.matchId}/turn`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }))
 }
 
-export async function cancelMiniGameChallenge(_payload: Record<string, any>): Promise<CommandResponse> {
-  throw new Error('Beer Bomb is disabled in Backend V2.')
+export async function cancelMiniGameChallenge(payload: Record<string, any>): Promise<CommandResponse> {
+  return reviveCommandResponse(await apiFetch<CommandResponse>(`/api/v2/mini-games/matches/${payload.matchId}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }))
 }
 
 export async function respondToBetOffer(payload: Record<string, any>) {
