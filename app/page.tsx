@@ -645,23 +645,27 @@ export default function BeerScoreApp() {
     setActiveDrinkTheme('beer')
   }
 
-  const handleCreateCrew = async (name: string) => {
+  // Shared wrapper: sets isMutating for any async mutation, surfaces errors to mutationError
+  const runMutation = useCallback(async (fn: () => Promise<void>, errorFallback?: string) => {
     setIsMutating(true)
     setMutationError(null)
     try {
-      const payload = await mutateApp('createCrew', { name })
-      applyAppPayload(payload)
+      await fn()
     } catch (error) {
-      setMutationError(error instanceof Error ? error.message : 'Could not create crew.')
+      setMutationError(error instanceof Error ? error.message : (errorFallback ?? 'Something went wrong.'))
     } finally {
       setIsMutating(false)
     }
-  }
+  }, [])
 
-  const handleJoinCrew = async (code: string) => {
-    setIsMutating(true)
-    setMutationError(null)
-    try {
+  const handleCreateCrew = (name: string) =>
+    runMutation(async () => {
+      const payload = await mutateApp('createCrew', { name })
+      applyAppPayload(payload)
+    }, 'Could not create crew.')
+
+  const handleJoinCrew = (code: string) =>
+    runMutation(async () => {
       const payload = await mutateApp('joinCrew', { code })
       applyAppPayload(payload)
       const normalizedCode = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -669,152 +673,135 @@ export default function BeerScoreApp() {
       if (joinedCrew) {
         handleSelectCrew(joinedCrew.id)
       }
-    } catch (error) {
-      setMutationError(error instanceof Error ? error.message : 'Crew code not found.')
-    } finally {
-      setIsMutating(false)
-    }
-  }
+    }, 'Crew code not found.')
 
   const handleLeaveCrew = () => {
-    if (activeCrewId) {
-      void mutateApp('leaveCrew', { crewId: activeCrewId }).then((payload) => {
-        applyAppPayload(payload)
-      })
-      handleBackToHome()
-    }
+    if (!activeCrewId) return
+    handleBackToHome()
+    void runMutation(async () => {
+      const payload = await mutateApp('leaveCrew', { crewId: activeCrewId })
+      applyAppPayload(payload)
+    })
   }
 
   const handleRenameCrew = (name: string) => {
-    if (activeCrewId) {
-      void mutateApp('renameCrew', { crewId: activeCrewId, name }).then(applyAppPayload)
-    }
+    if (!activeCrewId) return
+    void runMutation(async () => {
+      const payload = await mutateApp('renameCrew', { crewId: activeCrewId, name })
+      applyAppPayload(payload)
+    })
   }
 
   const handleKickMember = (memberId: string) => {
-    if (activeCrewId) {
-      void mutateApp('kickMember', { crewId: activeCrewId, memberId }).then(applyAppPayload)
-    }
+    if (!activeCrewId) return
+    void runMutation(async () => {
+      const payload = await mutateApp('kickMember', { crewId: activeCrewId, memberId })
+      applyAppPayload(payload)
+    })
   }
 
   const handleDeleteCrew = () => {
-    if (activeCrewId) {
-      void mutateApp('deleteCrew', { crewId: activeCrewId }).then(applyAppPayload)
-      handleBackToHome()
-    }
+    if (!activeCrewId) return
+    handleBackToHome()
+    void runMutation(async () => {
+      const payload = await mutateApp('deleteCrew', { crewId: activeCrewId })
+      applyAppPayload(payload)
+    })
   }
 
+  // Theme change is optimistic — apply locally immediately, sync in background without blocking UI
   const handleChangeDrinkTheme = (theme: DrinkTheme) => {
-    if (activeCrewId) {
-      void mutateApp('changeDrinkTheme', { crewId: activeCrewId, theme }).then(applyAppPayload)
-      setActiveDrinkTheme(theme)
-    }
+    if (!activeCrewId) return
+    setActiveDrinkTheme(theme)
+    void mutateApp('changeDrinkTheme', { crewId: activeCrewId, theme }).then(applyAppPayload)
   }
 
   const handleWager = (betId: string, optionId: string, drinks: number) => {
-    if (!activeCrewId || !session) {
-      return
-    }
-
-    void mutateApp('placeWager', { crewId: activeCrewId, betId, optionId, drinks }).then(applyAppPayload)
+    if (!activeCrewId || !session) return
+    void runMutation(async () => {
+      const payload = await mutateApp('placeWager', { crewId: activeCrewId, betId, optionId, drinks })
+      applyAppPayload(payload)
+    })
   }
 
   const handleCreateBet = (betInput: CreateBetInput) => {
-    if (!activeCrewId || !session) {
-      return
-    }
-
-    if (!activeCrew?.currentNight) {
-      return
-    }
+    if (!activeCrewId || !session || !activeCrew?.currentNight) return
 
     const challengerMembershipId =
       betInput.challenger && activeCrew
         ? getCrewMemberMembershipId(activeCrew.members.find((member) => member.id === betInput.challenger?.id)) ?? undefined
         : undefined
 
-    void mutateApp('createBet', {
-      crewId: activeCrewId,
-      nightId: activeCrew.currentNight.id,
-      type: betInput.type,
-      subtype: betInput.subtype,
-      title: betInput.title,
-      options: betInput.options,
-      line: betInput.line,
-      closeTime: betInput.closeTime,
-      wager: betInput.wager ?? 0,
-      initialOptionIndex: betInput.initialOptionIndex ?? 0,
-      challengerMembershipId,
-    }).then(applyAppPayload)
+    void runMutation(async () => {
+      const payload = await mutateApp('createBet', {
+        crewId: activeCrewId,
+        nightId: activeCrew.currentNight!.id,
+        type: betInput.type,
+        subtype: betInput.subtype,
+        title: betInput.title,
+        options: betInput.options,
+        line: betInput.line,
+        closeTime: betInput.closeTime,
+        wager: betInput.wager ?? 0,
+        initialOptionIndex: betInput.initialOptionIndex ?? 0,
+        challengerMembershipId,
+      })
+      applyAppPayload(payload)
+    })
   }
 
-  const handleCreateMiniGameChallenge = async (challengeInput: CreateMiniGameInput) => {
-    if (!activeCrewId || !session || !activeCrew?.currentNight) {
-      return
-    }
+  const handleCreateMiniGameChallenge = (challengeInput: CreateMiniGameInput) => {
+    if (!activeCrewId || !session || !activeCrew?.currentNight) return
 
     const opponentMember = activeCrew.members.find((member) => member.id === challengeInput.opponent.id)
-    if (!opponentMember) {
-      return
-    }
+    if (!opponentMember) return
 
     const opponentMembershipId = getCrewMemberMembershipId(opponentMember)
-    if (!opponentMembershipId) {
-      return
-    }
+    if (!opponentMembershipId) return
 
-    const payload = await createMiniGameChallenge({
-      crewId: activeCrewId,
-      nightId: activeCrew.currentNight.id,
-      title: challengeInput.title,
-      opponentMembershipId,
-      wager: challengeInput.wager,
-      closeTime: challengeInput.closeTime,
-      boardSize: challengeInput.boardSize ?? 8,
+    void runMutation(async () => {
+      const payload = await createMiniGameChallenge({
+        crewId: activeCrewId,
+        nightId: activeCrew.currentNight!.id,
+        title: challengeInput.title,
+        opponentMembershipId,
+        wager: challengeInput.wager,
+        closeTime: challengeInput.closeTime,
+        boardSize: challengeInput.boardSize ?? 8,
+      })
+      applyAppPayload(payload)
     })
-    applyAppPayload(payload)
   }
 
-  const handleBeerBombAccept = async (matchId: string) => {
+  const handleBeerBombAccept = (matchId: string) => {
     if (!activeCrewId) return
-
-    const payload = await respondToMiniGameChallenge({
-      crewId: activeCrewId,
-      matchId,
-      accepted: true,
+    void runMutation(async () => {
+      const payload = await respondToMiniGameChallenge({ crewId: activeCrewId, matchId, accepted: true })
+      applyAppPayload(payload)
     })
-    applyAppPayload(payload)
   }
 
-  const handleBeerBombDecline = async (matchId: string) => {
+  const handleBeerBombDecline = (matchId: string) => {
     if (!activeCrewId) return
-
-    const payload = await respondToMiniGameChallenge({
-      crewId: activeCrewId,
-      matchId,
-      accepted: false,
+    void runMutation(async () => {
+      const payload = await respondToMiniGameChallenge({ crewId: activeCrewId, matchId, accepted: false })
+      applyAppPayload(payload)
     })
-    applyAppPayload(payload)
   }
 
-  const handleBeerBombCancel = async (matchId: string) => {
+  const handleBeerBombCancel = (matchId: string) => {
     if (!activeCrewId) return
-
-    const payload = await cancelMiniGameChallenge({
-      crewId: activeCrewId,
-      matchId,
+    void runMutation(async () => {
+      const payload = await cancelMiniGameChallenge({ crewId: activeCrewId, matchId })
+      applyAppPayload(payload)
     })
-    applyAppPayload(payload)
   }
 
+  // Beer Bomb turns are intentionally not wrapped in runMutation — the game board
+  // manages its own in-flight state and blocking the full UI would feel jarring mid-game.
   const handleBeerBombTurn = async (matchId: string, slotIndex: number) => {
     if (!activeCrewId) return
-
-    const payload = await takeMiniGameTurn({
-      crewId: activeCrewId,
-      matchId,
-      slotIndex,
-    })
+    const payload = await takeMiniGameTurn({ crewId: activeCrewId, matchId, slotIndex })
     applyAppPayload(payload)
   }
 
@@ -822,38 +809,37 @@ export default function BeerScoreApp() {
     // Mock UI only for now.
   }
 
-  const handleStartNight = async (nightName?: string, nightThemeOverride?: DrinkTheme) => {
-    if (!activeCrewId) {
-      return
-    }
-
-    setIsMutating(true)
-    try {
+  const handleStartNight = (nightName?: string, nightThemeOverride?: DrinkTheme) => {
+    if (!activeCrewId) return
+    void runMutation(async () => {
       const payload = await mutateApp('startNight', {
         crewId: activeCrewId,
         name: nightName?.trim() || (activeCrew ? `Tonight at ${activeCrew.name}` : 'Tonight'),
         drinkThemeOverride: nightThemeOverride,
       })
       applyAppPayload(payload)
-
       if (nightThemeOverride) {
         setActiveDrinkTheme(nightThemeOverride)
       }
-    } finally {
-      setIsMutating(false)
-    }
+    })
   }
 
   // Remove current user from night participants. If they're the last one, close the night.
   const handleLeaveNight = () => {
     if (!activeCrewId || !session || !activeCrew?.currentNight) return
-    void mutateApp('leaveNight', { crewId: activeCrewId, nightId: activeCrew.currentNight.id }).then(applyAppPayload)
+    void runMutation(async () => {
+      const payload = await mutateApp('leaveNight', { crewId: activeCrewId, nightId: activeCrew.currentNight!.id })
+      applyAppPayload(payload)
+    })
   }
 
   // Rejoin an active night
   const handleRejoinNight = () => {
     if (!activeCrewId || !session || !activeCrew?.currentNight) return
-    void mutateApp('rejoinNight', { crewId: activeCrewId, nightId: activeCrew.currentNight.id }).then(applyAppPayload)
+    void runMutation(async () => {
+      const payload = await mutateApp('rejoinNight', { crewId: activeCrewId, nightId: activeCrew.currentNight!.id })
+      applyAppPayload(payload)
+    })
   }
 
   if (!isAuthReady || (session && !isDataReady)) {
