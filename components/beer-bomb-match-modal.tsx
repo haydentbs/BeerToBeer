@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bomb, ChevronRight, Clock, Flame, Swords, Trophy, X } from 'lucide-react'
+import { Bomb, Check, ChevronRight, Clock, Flame, Swords, Trophy, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   formatDrinks,
@@ -215,16 +215,69 @@ function MiniGameStatusBadge({
 export function BeerBombMatchCard({ match, linkedBet, currentMembershipId, onOpen }: BeerBombMatchCardProps) {
   const phase = getMatchPhase(match, currentMembershipId)
   const wager = match.agreedWager ?? match.proposedWager
-  const isCompleted = match.status === 'completed'
+  const isTerminal = ['completed', 'cancelled', 'declined'].includes(match.status)
+
+  // Compact card for settled/terminal matches — same style as BetCardCompact
+  if (isTerminal) {
+    const outcomeLabel = getOutcomeLabel(match, currentMembershipId)
+    const isWin = currentMembershipId != null && currentMembershipId === match.winnerMembershipId
+    const isLoss = currentMembershipId != null && currentMembershipId === match.loserMembershipId
+    const winnerName = getMemberLabel(match, match.winnerMembershipId)
+
+    return (
+      <button
+        onClick={() => onOpen(match)}
+        className="w-full bg-card rounded-xl border-2 border-border p-3 transition-all active:scale-[0.98] text-left flex items-center gap-3"
+      >
+        <div className={cn(
+          'w-10 h-10 rounded-lg flex items-center justify-center shrink-0',
+          match.status === 'completed' ? 'bg-win/20' : 'bg-surface'
+        )}>
+          {match.status === 'completed' ? (
+            <Check className="w-5 h-5 text-win" />
+          ) : (
+            <Bomb className="w-5 h-5 text-muted-foreground" />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <h3 className="font-bold text-card-foreground text-sm truncate">{match.title}</h3>
+          <div className="flex items-center gap-2 mt-0.5">
+            {match.status === 'completed' ? (
+              <>
+                <span className="text-xs text-muted-foreground">{outcomeLabel}</span>
+                <span className="text-xs text-muted-foreground">&middot;</span>
+                <span className={cn('text-xs font-semibold', isWin ? 'text-win' : isLoss ? 'text-loss' : 'text-muted-foreground')}>
+                  {isWin ? `+${wager.toFixed(1)}` : isLoss ? `-${wager.toFixed(1)}` : `${winnerName} won`}
+                </span>
+              </>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                {match.status === 'declined' ? 'Declined' : 'Cancelled'}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="shrink-0 flex items-center gap-2">
+          <span className={cn(
+            'text-xs font-semibold uppercase',
+            match.status === 'completed' ? 'text-win' : 'text-muted-foreground'
+          )}>
+            {match.status === 'completed' ? 'Settled' : match.status === 'declined' ? 'Declined' : 'Void'}
+          </span>
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+        </div>
+      </button>
+    )
+  }
+
+  // Full card for active/pending matches
   const revealedCount = match.revealedSlotIndices.length
-  const statusDetail = isCompleted
-    ? `${revealedCount} beers revealed`
-    : match.status === 'active'
+  const statusDetail = match.status === 'active'
     ? `${revealedCount} beers tapped`
     : match.status === 'pending'
     ? 'Waiting for response'
-    : match.status === 'declined'
-    ? 'Challenge declined'
     : 'Challenge cancelled'
 
   return (
@@ -257,20 +310,6 @@ export function BeerBombMatchCard({ match, linkedBet, currentMembershipId, onOpe
               </span>
             )}
             <span className="text-xs text-muted-foreground">{formatRelativeTime(match.updatedAt)}</span>
-          </div>
-          <div className="mt-4 rounded-2xl border-2 border-border bg-surface/70 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Players</p>
-                <p className="mt-1 text-sm font-semibold text-card-foreground">
-                  {match.challenger.name} vs {match.opponent.name}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Overview</p>
-                <p className="mt-1 text-sm font-semibold text-card-foreground">{statusDetail}</p>
-              </div>
-            </div>
           </div>
         </div>
         <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
