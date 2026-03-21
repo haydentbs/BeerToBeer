@@ -17,7 +17,7 @@ import {
   type User,
 } from '@/lib/store'
 import { getServiceRoleClient } from '@/lib/server/supabase'
-import type { AppBootstrapPayload, AppMutationPayload, ClaimableGuest, CrewDataBundle } from '@/lib/server/domain'
+import type { AppBootstrapOptions, AppBootstrapPayload, AppMutationPayload, ClaimableGuest, CrewDataBundle } from '@/lib/server/domain'
 import type { RequestActor } from '@/lib/server/session'
 
 type DrinkTheme = Crew['drinkTheme']
@@ -27,6 +27,7 @@ const MAX_WAGER_DRINKS = 5
 const RESULT_CONFIRMATION_WINDOW_MS = 60_000
 const DISPUTE_VOTE_WINDOW_MS = 60_000
 const H2H_RESPONSE_WINDOW_MINUTES = 5
+const EXPIRATION_SWEEP_INTERVAL_MS = 15_000
 
 const ROLE_ORDER: Record<Role, number> = {
   creator: 0,
@@ -58,6 +59,7 @@ const CREW_SETTINGS_SELECT =
 const MINI_GAME_MATCH_SELECT =
   'id, crew_id, night_id, game_key, title, status, created_by_membership_id, opponent_membership_id, proposed_wager, agreed_wager, board_size, hidden_slot_index, current_turn_membership_id, starting_player_membership_id, winner_membership_id, loser_membership_id, revealed_slots, metadata, accepted_at, declined_at, cancelled_at, completed_at, created_at, updated_at, bet_id, respond_by_at'
 const NOTIFICATION_BOOTSTRAP_LIMIT = 50
+const expirationSweepByCrewId = new Map<string, number>()
 
 function getInitials(value: string) {
   const parts = value.trim().split(/\s+/).filter(Boolean)
@@ -388,8 +390,7 @@ async function mergeGuestNotificationPreference(fromMembershipId: string, toMemb
 
 async function updateMembershipReference(table: string, column: string, fromMembershipId: string, toMembershipId: string) {
   if (table === 'mini_game_matches' || table === 'mini_game_match_events') {
-    const available = await hasMiniGameMatchTable()
-    if (!available) {
+    if (miniGameMatchTableAvailable === false) {
       return
     }
   }
@@ -1077,28 +1078,26 @@ async function requireActiveNightParticipant(nightId: string, membershipId: stri
 
 let miniGameMatchTableAvailable: boolean | null = null
 
-async function hasMiniGameMatchTable() {
-  if (miniGameMatchTableAvailable !== null) {
-    return miniGameMatchTableAvailable
-  }
+function getCrewIdsDueForExpirationSweep(crewIds: string[]) {
+  const now = Date.now()
+  const dueCrewIds = crewIds.filter((crewId) => {
+    const lastSweepAt = expirationSweepByCrewId.get(crewId) ?? 0
+    return now - lastSweepAt >= EXPIRATION_SWEEP_INTERVAL_MS
+  })
 
-  const supabase = getServiceRoleClient()
-  const { error } = await supabase
-    .from('mini_game_matches')
-    .select('id')
-    .limit(1)
+  dueCrewIds.forEach((crewId) => {
+    expirationSweepByCrewId.set(crewId, now)
+  })
 
-  if (error) {
-    miniGameMatchTableAvailable = !/mini_game_matches|schema cache/i.test(error.message ?? '')
-    return miniGameMatchTableAvailable
-  }
-
-  miniGameMatchTableAvailable = true
-  return true
+  return dueCrewIds
 }
 
-async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayload> {
+async function loadBackendState(
+  actor: RequestActor,
+  options: AppBootstrapOptions = {}
+): Promise<AppBootstrapPayload> {
   const supabase = getServiceRoleClient()
+  const bootstrapMode = options.mode === 'crew' ? 'crew' : 'full'
 
   let profile: any = null
   let guestIdentityId: string | null = null
@@ -1108,7 +1107,15 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
   } else if (actor.kind === 'guest') {
     guestIdentityId = actor.session.guestIdentityId ?? null
   } else {
-    return { crews: [], crewDataById: {}, notifications: [], viewerUser: null, claimableGuests: [] }
+    return {
+      bootstrapMode,
+      activeCrewId: options.activeCrewId ?? null,
+      crews: [],
+      crewDataById: {},
+      notifications: [],
+      viewerUser: null,
+      claimableGuests: [],
+    }
   }
 
   let actorMembershipsQuery = supabase
@@ -1120,7 +1127,15 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
   } else if (guestIdentityId) {
     actorMembershipsQuery = actorMembershipsQuery.eq('guest_identity_id', guestIdentityId)
   } else {
-    return { crews: [], crewDataById: {}, notifications: [], viewerUser: null, claimableGuests: [] }
+    return {
+      bootstrapMode,
+      activeCrewId: options.activeCrewId ?? null,
+      crews: [],
+      crewDataById: {},
+      notifications: [],
+      viewerUser: null,
+      claimableGuests: [],
+    }
   }
 
   const { data: actorMemberships, error: actorMembershipError } = await actorMembershipsQuery
@@ -1128,9 +1143,21 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
 
   const activeMemberships = (actorMemberships ?? []).filter((membership: any) => membership.status === 'active')
   const crewIds = [...new Set(activeMemberships.map((membership: any) => membership.crew_id))]
+  const scopedCrewId =
+    bootstrapMode === 'crew' && options.activeCrewId && crewIds.includes(options.activeCrewId)
+      ? options.activeCrewId
+      : null
+  const requestedCrewIds =
+    bootstrapMode === 'crew'
+      ? scopedCrewId
+        ? [scopedCrewId]
+        : []
+      : crewIds
 
   if (!crewIds.length) {
     return {
+      bootstrapMode,
+      activeCrewId: scopedCrewId,
       crews: [],
       crewDataById: {},
       notifications: [],
@@ -1139,17 +1166,32 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
     }
   }
 
-  await processBetExpirationsForCrews(crewIds)
-  await processMiniGameExpirationsForCrews(crewIds)
+  if (bootstrapMode === 'crew' && !requestedCrewIds.length) {
+    return {
+      bootstrapMode,
+      activeCrewId: options.activeCrewId ?? null,
+      crews: [],
+      crewDataById: {},
+      notifications: [],
+      viewerUser: profile ? buildViewerUser(profile, activeMemberships) : null,
+      claimableGuests: [],
+    }
+  }
+
+  const crewIdsDueForExpirationSweep = getCrewIdsDueForExpirationSweep(requestedCrewIds)
+  if (crewIdsDueForExpirationSweep.length) {
+    await processBetExpirationsForCrews(crewIdsDueForExpirationSweep)
+    await processMiniGameExpirationsForCrews(crewIdsDueForExpirationSweep)
+  }
 
   const [
     crewResult,
     membershipResult,
     nightResult,
   ] = await Promise.all([
-    supabase.from('crews').select(CREW_SELECT).in('id', crewIds).is('archived_at', null),
-    supabase.from('crew_memberships').select(CREW_MEMBERSHIP_WITH_ACTOR_SELECT).in('crew_id', crewIds),
-    supabase.from('nights').select(NIGHT_SELECT).in('crew_id', crewIds).order('started_at', { ascending: false }),
+    supabase.from('crews').select(CREW_SELECT).in('id', requestedCrewIds).is('archived_at', null),
+    supabase.from('crew_memberships').select(CREW_MEMBERSHIP_WITH_ACTOR_SELECT).in('crew_id', requestedCrewIds),
+    supabase.from('nights').select(NIGHT_SELECT).in('crew_id', requestedCrewIds).order('started_at', { ascending: false }),
   ])
 
   if (crewResult.error) throw crewResult.error
@@ -1173,7 +1215,7 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
         .order('created_at', { ascending: false })
         .limit(NOTIFICATION_BOOTSTRAP_LIMIT)
 
-  const canLoadMiniGameMatches = await hasMiniGameMatchTable()
+  const canLoadMiniGameMatches = miniGameMatchTableAvailable !== false
   const [participantResult, betResult, notificationResult, ledgerResult, miniGameMatchResult] = await Promise.all([
     nightIds.length
       ? supabase.from('night_participants').select(NIGHT_PARTICIPANT_SELECT).in('night_id', nightIds)
@@ -1197,6 +1239,11 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
     miniGameMatchResult.error &&
     /mini_game_matches|schema cache/i.test(miniGameMatchResult.error.message ?? '')
   )
+  if (!miniGameMatchResult.error) {
+    miniGameMatchTableAvailable = true
+  } else if (miniGameMatchQueryFailed) {
+    miniGameMatchTableAvailable = false
+  }
   if (miniGameMatchResult.error && !miniGameMatchQueryFailed) throw miniGameMatchResult.error
 
   const bets = betResult.data ?? []
@@ -1434,6 +1481,8 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
     : []
 
   return {
+    bootstrapMode,
+    activeCrewId: scopedCrewId,
     crews,
     crewDataById,
     notifications,
@@ -1442,8 +1491,8 @@ async function loadBackendState(actor: RequestActor): Promise<AppBootstrapPayloa
   }
 }
 
-export async function loadAppState(actor: RequestActor): Promise<AppBootstrapPayload> {
-  return loadBackendState(actor)
+export async function loadAppState(actor: RequestActor, options?: AppBootstrapOptions): Promise<AppBootstrapPayload> {
+  return loadBackendState(actor, options)
 }
 
 export async function joinCrewAsGuest(name: string, inviteCode: string): Promise<AppMutationPayload> {
@@ -1677,8 +1726,7 @@ async function processMiniGameExpirationsForCrews(crewIds: string[]) {
     return
   }
 
-  const available = await hasMiniGameMatchTable()
-  if (!available) {
+  if (miniGameMatchTableAvailable === false) {
     return
   }
 
@@ -1693,11 +1741,14 @@ async function processMiniGameExpirationsForCrews(crewIds: string[]) {
 
   if (error) {
     if (/mini_game_matches|schema cache/i.test(error.message ?? '')) {
+      miniGameMatchTableAvailable = false
       return
     }
 
     throw error
   }
+
+  miniGameMatchTableAvailable = true
 
   for (const match of staleMatches ?? []) {
     await cancelMiniGameMatch(match, match.created_by_membership_id ?? null, 'Challenge expired before it was accepted.')
@@ -2128,20 +2179,19 @@ async function processBetExpirationsForCrews(crewIds: string[]) {
 
   const supabase = getServiceRoleClient()
   const now = Date.now()
+  const nowIso = new Date(now).toISOString()
+  const pendingResultCutoffIso = new Date(now - RESULT_CONFIRMATION_WINDOW_MS).toISOString()
 
   const { data: pendingOffers, error: pendingOffersError } = await supabase
     .from('bets')
     .select('id, crew_id, created_by_membership_id, challenger_membership_id, status, respond_by_at')
     .in('crew_id', crewIds)
     .eq('status', 'pending_accept')
+    .lt('respond_by_at', nowIso)
 
   if (pendingOffersError) throw pendingOffersError
 
   for (const bet of pendingOffers ?? []) {
-    if (!bet.respond_by_at || asDate(bet.respond_by_at).getTime() > now) {
-      continue
-    }
-
     const declinedAt = new Date().toISOString()
     await supabase
       .from('bets')
@@ -2184,15 +2234,12 @@ async function processBetExpirationsForCrews(crewIds: string[]) {
     .select('id, crew_id, status, created_by_membership_id, pending_result_option_id, pending_result_at')
     .in('crew_id', crewIds)
     .eq('status', 'pending_result')
+    .lt('pending_result_at', pendingResultCutoffIso)
 
   if (pendingError) throw pendingError
 
   for (const bet of pendingBets ?? []) {
     if (!bet.pending_result_option_id || !bet.pending_result_at) {
-      continue
-    }
-
-    if (asDate(bet.pending_result_at).getTime() + RESULT_CONFIRMATION_WINDOW_MS > now) {
       continue
     }
 
@@ -2209,22 +2256,25 @@ async function processBetExpirationsForCrews(crewIds: string[]) {
     .from('disputes')
     .select('id, opened_by_membership_id, expires_at, bet_id')
     .eq('status', 'open')
+    .lt('expires_at', nowIso)
 
   if (disputeError) throw disputeError
 
+  const relatedBetIds = [...new Set((openDisputes ?? []).map((dispute: any) => dispute.bet_id).filter(Boolean))]
+  const { data: relatedBets, error: relatedBetsError } = relatedBetIds.length
+    ? await supabase
+        .from('bets')
+        .select('id, crew_id')
+        .in('id', relatedBetIds)
+    : { data: [], error: null }
+
+  if (relatedBetsError) throw relatedBetsError
+
+  const crewIdByBetId = new Map((relatedBets ?? []).map((bet: any) => [bet.id, bet.crew_id]))
+
   for (const dispute of openDisputes ?? []) {
-    if (!dispute.expires_at || asDate(dispute.expires_at).getTime() > now) {
-      continue
-    }
-
-    const { data: relatedBet, error: relatedBetError } = await supabase
-      .from('bets')
-      .select('crew_id')
-      .eq('id', dispute.bet_id)
-      .single()
-
-    if (relatedBetError) throw relatedBetError
-    if (!crewIds.includes(relatedBet.crew_id)) {
+    const relatedCrewId = crewIdByBetId.get(dispute.bet_id)
+    if (!relatedCrewId || !crewIds.includes(relatedCrewId)) {
       continue
     }
 

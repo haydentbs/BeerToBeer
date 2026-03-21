@@ -1,7 +1,7 @@
 'use client'
 
 import type { AppSession } from '@/lib/auth'
-import type { AppBootstrapPayload, AppMutationPayload } from '@/lib/server/domain'
+import type { AppBootstrapMode, AppBootstrapPayload, AppMutationPayload } from '@/lib/server/domain'
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase-client'
 import type { Bet, Crew, Notification } from '@/lib/store'
 
@@ -101,8 +101,19 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
-export async function fetchBootstrapState() {
-  const payload = await apiFetch<AppBootstrapPayload>('/api/app/bootstrap')
+export async function fetchBootstrapState(options?: { mode?: AppBootstrapMode; activeCrewId?: string | null }) {
+  const searchParams = new URLSearchParams()
+
+  if (options?.mode && options.mode !== 'full') {
+    searchParams.set('mode', options.mode)
+  }
+
+  if (options?.activeCrewId) {
+    searchParams.set('activeCrewId', options.activeCrewId)
+  }
+
+  const queryString = searchParams.toString()
+  const payload = await apiFetch<AppBootstrapPayload>(`/api/app/bootstrap${queryString ? `?${queryString}` : ''}`)
   return revivePayload(payload)
 }
 

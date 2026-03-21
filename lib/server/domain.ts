@@ -1,6 +1,13 @@
 import type { Crew, LedgerEntry, LeaderboardEntry, Notification, User } from '@/lib/store'
 import type { AppSession } from '@/lib/auth'
 
+export type AppBootstrapMode = 'full' | 'crew'
+
+export interface AppBootstrapOptions {
+  mode?: AppBootstrapMode
+  activeCrewId?: string | null
+}
+
 export interface CrewDataBundle {
   tonightLedger: LedgerEntry[]
   allTimeLedger: LedgerEntry[]
@@ -18,6 +25,8 @@ export interface ClaimableGuest {
 }
 
 export interface AppBootstrapPayload {
+  bootstrapMode?: AppBootstrapMode
+  activeCrewId?: string | null
   crews: Crew[]
   crewDataById: Record<string, CrewDataBundle>
   notifications: Notification[]

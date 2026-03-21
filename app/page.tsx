@@ -317,10 +317,63 @@ export default function BeerScoreApp() {
   }, [])
 
   const applyAppPayload = useCallback((payload: AppMutationPayload) => {
-    setCrews(payload.crews)
-    setCrewDataById(payload.crewDataById)
+    const scopedCrewId = payload.bootstrapMode === 'crew' ? payload.activeCrewId ?? null : null
+
+    if (scopedCrewId) {
+      const scopedCrew = payload.crews.find((crew) => crew.id === scopedCrewId) ?? null
+
+      setCrews((current) => {
+        const existingIndex = current.findIndex((crew) => crew.id === scopedCrewId)
+
+        if (!scopedCrew) {
+          if (existingIndex === -1) {
+            return current
+          }
+
+          return current.filter((crew) => crew.id !== scopedCrewId)
+        }
+
+        if (existingIndex === -1) {
+          return [...current, scopedCrew]
+        }
+
+        const next = current.slice()
+        next[existingIndex] = scopedCrew
+        return next
+      })
+
+      setCrewDataById((current) => {
+        const scopedCrewData = payload.crewDataById[scopedCrewId]
+
+        if (!scopedCrewData) {
+          if (!(scopedCrewId in current)) {
+            return current
+          }
+
+          const next = { ...current }
+          delete next[scopedCrewId]
+          return next
+        }
+
+        return {
+          ...current,
+          [scopedCrewId]: scopedCrewData,
+        }
+      })
+    } else {
+      setCrews(payload.crews)
+      setCrewDataById(payload.crewDataById)
+    }
+
     setNotifications(payload.notifications)
-    setClaimableGuests(payload.claimableGuests ?? [])
+    setClaimableGuests((current) => {
+      if (!scopedCrewId) {
+        return payload.claimableGuests ?? []
+      }
+
+      const nextGuests = current.filter((guest) => guest.crewId !== scopedCrewId)
+      return nextGuests.concat(payload.claimableGuests ?? [])
+    })
     setPendingCrewThemeById((current) => {
       if (!Object.keys(current).length) {
         return current
@@ -598,7 +651,7 @@ export default function BeerScoreApp() {
   )
 
   useEffect(() => {
-    if (!session) {
+    if (!session || view !== 'crew' || !activeCrewId) {
       return
     }
 
@@ -607,7 +660,10 @@ export default function BeerScoreApp() {
 
     const poll = async () => {
       try {
-        const payload = await fetchBootstrapState()
+        const payload = await fetchBootstrapState({
+          mode: 'crew',
+          activeCrewId,
+        })
         if (!cancelled) {
           applyAppPayload(payload)
         }
@@ -626,6 +682,7 @@ export default function BeerScoreApp() {
     intervalId = setInterval(() => {
       void poll()
     }, intervalMs)
+    void poll()
 
     return () => {
       cancelled = true
@@ -633,7 +690,7 @@ export default function BeerScoreApp() {
         clearInterval(intervalId)
       }
     }
-  }, [activeCrew?.currentNight, activeTab, applyAppPayload, hasLiveMiniGameMatch, session, view])
+  }, [activeCrew?.currentNight, activeCrewId, activeTab, applyAppPayload, hasLiveMiniGameMatch, session, view])
 
   useEffect(() => {
     if (!session || session.isGuest || !getPendingGuestClaimFlag()) {
