@@ -266,20 +266,23 @@ describe('persistent backend contract', () => {
     ).rejects.toThrow(/creator or admin permissions/i)
   }, 30000)
 
-  it('persists Beer Bomb challenge acceptance, turns, and settlement into the match and ledger tables', async () => {
+  it('creates a linked H2H bet for Beer Bomb, accepts side bets, and settles through the canonical bet flow', async () => {
     if (!miniGameTablesAvailable) {
       return
     }
 
     const { creator, crew, night } = await createCrewWithNight('Beer Bomb Flow')
     const challenger = makeAuthenticatedActor('Beer Bomb Rival')
+    const observer = makeAuthenticatedActor('Beer Bomb Spectator')
 
     await mutateAppState(challenger, 'joinCrew', { code: crew.inviteCode })
+    await mutateAppState(observer, 'joinCrew', { code: crew.inviteCode })
 
     let state = await loadAppState(creator)
     let currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
     const creatorMember = currentCrew.members.find((member: any) => member.role === 'creator')!
     const opponentMember = currentCrew.members.find((member: any) => member.name === 'Beer Bomb Rival')!
+    const observerMember = currentCrew.members.find((member: any) => member.name === 'Beer Bomb Spectator')!
 
     expect(currentCrew.currentNight?.miniGameMatches ?? []).toHaveLength(0)
 
@@ -316,9 +319,26 @@ describe('persistent backend contract', () => {
     expect(activeMatch?.status).toBe('active')
     expect(activeMatch?.agreedWager).toBe(2)
     expect(activeMatch?.currentTurn).toBeTruthy()
+    expect(activeMatch?.betId).toBeTruthy()
+
+    const linkedBet = currentCrew.currentNight?.bets.find((bet: any) => bet.id === activeMatch?.betId)
+    expect(linkedBet).toBeTruthy()
+    expect(linkedBet?.type).toBe('h2h')
+    expect(linkedBet?.status).toBe('open')
+    expect(linkedBet?.options).toHaveLength(2)
+    expect(linkedBet?.options[0].wagers.some((wager: any) => wager.user.membershipId === creatorMember.membershipId && wager.drinks === 2)).toBe(true)
+    expect(linkedBet?.options[1].wagers.some((wager: any) => wager.user.membershipId === opponentMember.membershipId && wager.drinks === 2)).toBe(true)
 
     const acceptedRow = await getMiniGameMatchRow(pendingMatch!.id)
     expect(acceptedRow.current_turn_membership_id).toBe(activeMatch?.currentTurn?.membershipId)
+    expect(acceptedRow.bet_id).toBe(activeMatch?.betId)
+
+    await mutateAppState(observer, 'placeWager', {
+      crewId: crew.id,
+      betId: linkedBet!.id,
+      optionId: linkedBet!.options[0].id,
+      drinks: 1.5,
+    })
 
     let duplicateTurnTested = false
     while (true) {
@@ -379,10 +399,30 @@ describe('persistent backend contract', () => {
     expect(activeMatch?.winner).toBeTruthy()
     expect(activeMatch?.loser).toBeTruthy()
 
-    const ledgerEntry = state.crewDataById[crew.id].allTimeLedger.find((entry: any) => entry.matchId === pendingMatch!.id)
-    expect(ledgerEntry?.drinks).toBe(2)
-    expect(ledgerEntry?.fromUser.name).toBe(activeMatch?.loser?.name)
-    expect(ledgerEntry?.toUser.name).toBe(activeMatch?.winner?.name)
+    const pendingLinkedBet = currentCrew.currentNight?.bets.find((bet: any) => bet.id === activeMatch?.betId)
+    expect(pendingLinkedBet?.status).toBe('pending_result')
+
+    await expirePendingResult(pendingLinkedBet!.id)
+    await mutateAppState(creator, 'confirmResult', {
+      crewId: crew.id,
+      betId: pendingLinkedBet!.id,
+    })
+
+    state = await loadAppState(creator)
+    currentCrew = state.crews.find((entry: any) => entry.id === crew.id)!
+    const resolvedLinkedBet = currentCrew.currentNight?.bets.find((bet: any) => bet.id === activeMatch?.betId)
+    expect(resolvedLinkedBet?.status).toBe('resolved')
+
+    const ledgerEntries = state.crewDataById[crew.id].allTimeLedger.filter((entry: any) => entry.betId === pendingLinkedBet!.id)
+    expect(ledgerEntries.length).toBeGreaterThan(0)
+
+    const { data: ledgerRows } = await getServiceRoleClient()
+      .from('ledger_events')
+      .select('event_type, bet_id, metadata')
+      .eq('bet_id', pendingLinkedBet!.id)
+
+    expect(ledgerRows?.every((row: any) => row.event_type === 'bet_result')).toBe(true)
+    expect(ledgerRows?.some((row: any) => row.metadata?.matchId === pendingMatch!.id)).toBe(false)
 
     const { data: events } = await getServiceRoleClient()
       .from('mini_game_match_events')
@@ -437,6 +477,7 @@ describe('persistent backend contract', () => {
     const declinedRow = await getMiniGameMatchRow(declinedMatch!.id)
     expect(declinedRow.status).toBe('declined')
     expect(declinedRow.declined_at).toBeTruthy()
+    expect(declinedRow.bet_id).toBeNull()
 
     await mutateAppState(creator, 'createMiniGameChallenge', {
       crewId: crew.id,
@@ -461,6 +502,7 @@ describe('persistent backend contract', () => {
     const cancelledRow = await getMiniGameMatchRow(cancelledMatch!.id)
     expect(cancelledRow.status).toBe('cancelled')
     expect(cancelledRow.cancelled_at).toBeTruthy()
+    expect(cancelledRow.bet_id).toBeNull()
   }, 30000)
 
   it('persists dispute voting and resolves with non-voters backing the proposed result', async () => {

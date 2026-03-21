@@ -3295,8 +3295,12 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       }
 
       const proposedWager = Number(payload.proposedWager ?? payload.wager)
+      const closeTime = Number(payload.closeTime ?? 5)
       if (!isValidHalfDrinkAmount(proposedWager)) {
         throw new Error('Beer Bomb wagers must be in 0.5 drink increments and at most 5 drinks.')
+      }
+      if (!Number.isFinite(closeTime) || closeTime <= 0) {
+        throw new Error('Challenge response time must be greater than zero.')
       }
 
       if (!payload.opponentMembershipId || payload.opponentMembershipId === actorMembership.id) {
@@ -3332,6 +3336,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
           board_size: BEER_BOMB_BOARD_SIZE,
           hidden_slot_index: Math.floor(Math.random() * BEER_BOMB_BOARD_SIZE),
           revealed_slots: [],
+          respond_by_at: new Date(Date.now() + closeTime * 60_000).toISOString(),
           metadata: payload.metadata ?? {},
         })
         .select()

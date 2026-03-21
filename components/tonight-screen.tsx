@@ -77,9 +77,18 @@ export function TonightScreen({
   const { drinkEmoji } = useTheme()
 
   const miniGameMatches = (night.miniGameMatches ?? []) as unknown as BeerBombMatch[]
+  const betsById = new Map(night.bets.map((bet) => [bet.id, bet]))
   const activeBets = night.bets.filter((bet) => ['open', 'pending_result', 'disputed'].includes(bet.status))
   const resolvedBets = night.bets.filter((bet) => ['resolved', 'void', 'cancelled'].includes(bet.status))
   const totalPool = night.bets.reduce((acc, bet) => acc + bet.totalPool, 0)
+  const liveSelectedBet = selectedBet ? betsById.get(selectedBet.id) ?? selectedBet : null
+  const liveSelectedBeerBombMatch = selectedBeerBombMatch?.isDevSolo
+    ? selectedBeerBombMatch
+    : selectedBeerBombMatch
+      ? miniGameMatches.find((match) => match.id === selectedBeerBombMatch.id) ?? selectedBeerBombMatch
+      : null
+  const selectedBeerBombLinkedBet =
+    liveSelectedBeerBombMatch?.betId ? betsById.get(liveSelectedBeerBombMatch.betId) ?? null : null
 
   const handleStartSoloBeerBomb = () => {
     setSelectedBeerBombMatch(createSoloBeerBombMatch(currentUser))
@@ -151,6 +160,7 @@ export function TonightScreen({
                 <BeerBombMatchCard
                   key={match.id}
                   match={match}
+                  linkedBet={match.betId ? betsById.get(match.betId) ?? null : null}
                   currentMembershipId={currentUser.membershipId ?? currentUser.id}
                   onOpen={setSelectedBeerBombMatch}
                 />
@@ -219,21 +229,23 @@ export function TonightScreen({
       </div>
 
       <BetDetailModal
-        bet={selectedBet}
-        isOpen={!!selectedBet}
+        bet={liveSelectedBet}
+        isOpen={!!liveSelectedBet}
         onClose={() => setSelectedBet(null)}
         onWager={onWager}
       />
 
       <BeerBombMatchModal
-        match={selectedBeerBombMatch}
-        isOpen={!!selectedBeerBombMatch}
+        match={liveSelectedBeerBombMatch}
+        linkedBet={selectedBeerBombLinkedBet}
+        isOpen={!!liveSelectedBeerBombMatch}
         currentMembershipId={currentUser.membershipId ?? currentUser.id}
         onClose={() => setSelectedBeerBombMatch(null)}
         onAccept={onBeerBombAccept}
         onDecline={onBeerBombDecline}
         onCancel={onBeerBombCancel}
         onTakeTurn={handleBeerBombTurnWithDevSupport}
+        onWager={onWager}
       />
     </>
   )

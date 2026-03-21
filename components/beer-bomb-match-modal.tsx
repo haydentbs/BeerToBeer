@@ -3,7 +3,15 @@
 import { useEffect, useState } from 'react'
 import { Bomb, ChevronRight, Clock, Flame, Swords, Trophy, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatRelativeTime } from '@/lib/store'
+import {
+  formatDrinks,
+  formatRelativeTime,
+  getMemberOutcomeForBet,
+  getUserWagerForBet,
+  projectBetPayout,
+  type Bet,
+} from '@/lib/store'
+import { useCurrentUser } from '@/lib/current-user'
 
 export type BeerBombMatchStatus = 'pending' | 'active' | 'completed' | 'declined' | 'cancelled'
 
@@ -18,6 +26,7 @@ export interface BeerBombPlayer {
 export interface BeerBombMatch {
   id: string
   gameKey: 'beer_bomb'
+  betId?: string | null
   title: string
   isDevSolo?: boolean
   status: BeerBombMatchStatus
@@ -40,12 +49,14 @@ export interface BeerBombMatch {
 
 interface BeerBombMatchCardProps {
   match: BeerBombMatch
+  linkedBet?: Bet | null
   currentMembershipId: string | null
   onOpen: (match: BeerBombMatch) => void
 }
 
 interface BeerBombMatchModalProps {
   match: BeerBombMatch | null
+  linkedBet?: Bet | null
   isOpen: boolean
   currentMembershipId: string | null
   onClose: () => void
@@ -53,6 +64,7 @@ interface BeerBombMatchModalProps {
   onDecline: (matchId: string) => Promise<void> | void
   onCancel: (matchId: string) => Promise<void> | void
   onTakeTurn: (matchId: string, slotIndex: number) => Promise<void> | void
+  onWager: (betId: string, optionId: string, drinks: number) => Promise<void> | void
 }
 
 const BG_CANDIDATES = [
@@ -187,7 +199,7 @@ function MiniGameStatusBadge({
   )
 }
 
-export function BeerBombMatchCard({ match, currentMembershipId, onOpen }: BeerBombMatchCardProps) {
+export function BeerBombMatchCard({ match, linkedBet, currentMembershipId, onOpen }: BeerBombMatchCardProps) {
   const phase = getMatchPhase(match, currentMembershipId)
   const wager = match.agreedWager ?? match.proposedWager
   const slots = Array.from({ length: match.boardSize }, (_, index) => {
@@ -220,6 +232,11 @@ export function BeerBombMatchCard({ match, currentMembershipId, onOpen }: BeerBo
             <span className="rounded-full border border-border bg-surface px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-card-foreground">
               {wager.toFixed(1)} drinks
             </span>
+            {linkedBet && (
+              <span className="rounded-full border border-border bg-surface px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-card-foreground">
+                Pool {formatDrinks(linkedBet.totalPool)}
+              </span>
+            )}
             <span className="text-xs text-muted-foreground">{formatRelativeTime(match.updatedAt)}</span>
           </div>
         </div>
@@ -259,6 +276,7 @@ export function BeerBombMatchCard({ match, currentMembershipId, onOpen }: BeerBo
 
 export function BeerBombMatchModal({
   match,
+  linkedBet,
   isOpen,
   currentMembershipId,
   onClose,
@@ -266,9 +284,13 @@ export function BeerBombMatchModal({
   onDecline,
   onCancel,
   onTakeTurn,
+  onWager,
 }: BeerBombMatchModalProps) {
-  const [busyAction, setBusyAction] = useState<null | 'accept' | 'decline' | 'cancel' | 'turn'>(null)
+  const currentUser = useCurrentUser()
+  const [busyAction, setBusyAction] = useState<null | 'accept' | 'decline' | 'cancel' | 'turn' | 'wager'>(null)
   const [animatingSlotIndex, setAnimatingSlotIndex] = useState<number | null>(null)
+  const [selectedOption, setSelectedOption] = useState<string | null>(null)
+  const [wagerAmount, setWagerAmount] = useState(1)
 
   const resolvedBackground = useResolvedAsset(BG_CANDIDATES)
   const resolvedBeerIdle = useResolvedAsset(BEER_IDLE_CANDIDATES)
@@ -280,6 +302,11 @@ export function BeerBombMatchModal({
     setBusyAction(null)
   }, [match?.id, match?.updatedAt?.getTime(), match?.status, match?.revealedSlotIndices.join(','), match?.currentTurnMembershipId])
 
+  useEffect(() => {
+    setSelectedOption(null)
+    setWagerAmount(1)
+  }, [match?.id, linkedBet?.id, linkedBet?.status])
+
   if (!isOpen || !match) return null
 
   const phase = getMatchPhase(match, currentMembershipId)
@@ -289,11 +316,31 @@ export function BeerBombMatchModal({
   const amChallenger = currentMembershipId && currentMembershipId === match.challenger.membershipId
   const canActOnBoard = match.status === 'active' && isMyTurn && busyAction == null
   const canCancel = match.status === 'pending' && amChallenger && busyAction == null
+  const canPlaceSideBet = linkedBet?.status === 'open' && busyAction == null
+  const userWager = linkedBet ? getUserWagerForBet(linkedBet, currentUser.id) : null
+  const userOutcome = linkedBet ? getMemberOutcomeForBet(linkedBet, currentUser.id) : null
+  const selectedProjection =
+    linkedBet && selectedOption ? projectBetPayout(linkedBet, selectedOption, wagerAmount, currentUser.id) : 0
 
   const otherPlayer =
     currentMembershipId && currentMembershipId === match.challenger.membershipId
       ? match.opponent
       : match.challenger
+
+  const playerSummaries = linkedBet?.options.map((option, index) => {
+    const player = index === 0 ? match.challenger : match.opponent
+    const playerMembershipId = player.membershipId
+    const playerStake = option.wagers.find((entry) => entry.user.membershipId === playerMembershipId)?.drinks ?? 0
+    const sideWagers = option.wagers.filter((entry) => entry.user.membershipId !== playerMembershipId)
+
+    return {
+      option,
+      player,
+      playerStake,
+      sidePool: sideWagers.reduce((sum, entry) => sum + entry.drinks, 0),
+      sideBettorCount: sideWagers.length,
+    }
+  }) ?? []
 
   const boardSlots = Array.from({ length: match.boardSize }, (_, index) => {
     const revealed = match.revealedSlotIndices.includes(index)
@@ -352,6 +399,20 @@ export function BeerBombMatchModal({
       await onTakeTurn(match.id, index)
     } finally {
       setAnimatingSlotIndex(null)
+      setBusyAction(null)
+    }
+  }
+
+  const handleWager = async () => {
+    if (!linkedBet || !selectedOption) {
+      return
+    }
+
+    setBusyAction('wager')
+    try {
+      await onWager(linkedBet.id, selectedOption, wagerAmount)
+      setSelectedOption(null)
+    } finally {
       setBusyAction(null)
     }
   }
@@ -451,6 +512,126 @@ export function BeerBombMatchModal({
               </span>
             </div>
           </div>
+
+          {linkedBet && (
+            <div className="mb-4 rounded-2xl border-3 border-border bg-surface p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-muted-foreground">Linked Bet</p>
+                  <p className="text-lg font-bold text-card-foreground">
+                    {linkedBet.status === 'open'
+                      ? 'Side bets are live'
+                      : linkedBet.status === 'pending_result'
+                      ? 'Result pending confirmation'
+                      : linkedBet.status === 'disputed'
+                      ? 'Crew dispute in progress'
+                      : linkedBet.status === 'resolved'
+                      ? 'Bet settled'
+                      : 'Bet voided'}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Pool</p>
+                  <p className="text-lg font-black text-primary">{formatDrinks(linkedBet.totalPool)} drinks</p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {playerSummaries.map(({ option, player, playerStake, sidePool, sideBettorCount }) => {
+                  const isSelected = selectedOption === option.id
+                  return (
+                    <button
+                      key={option.id}
+                      onClick={() => {
+                        if (!canPlaceSideBet) return
+                        setSelectedOption(isSelected ? null : option.id)
+                      }}
+                      disabled={!canPlaceSideBet}
+                      className={cn(
+                        'rounded-2xl border-2 p-4 text-left transition-all',
+                        isSelected ? 'border-primary bg-primary/10' : 'border-border bg-card',
+                        canPlaceSideBet && 'hover:border-primary/50'
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Main event</p>
+                          <p className="text-base font-bold text-card-foreground">{player.name}</p>
+                        </div>
+                        <span className="rounded-full border border-border bg-surface px-3 py-1 text-xs font-bold text-card-foreground">
+                          {formatDrinks(playerStake)} on self
+                        </span>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Side pool</span>
+                        <span className="font-semibold text-card-foreground">
+                          {formatDrinks(sidePool)} from {sideBettorCount} bettors
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Total on side</span>
+                        <span className="font-semibold text-primary">{formatDrinks(option.totalDrinks)}</span>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
+              {canPlaceSideBet && (
+                <div className="mt-4 rounded-2xl border-2 border-border bg-card p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-muted-foreground">Place Side Bet</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {[0.5, 1, 2, 3].map((amount) => (
+                      <button
+                        key={amount}
+                        onClick={() => setWagerAmount(amount)}
+                        className={cn(
+                          'rounded-full border px-3 py-1.5 text-sm font-bold transition-all',
+                          wagerAmount === amount
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border bg-surface text-card-foreground'
+                        )}
+                      >
+                        {formatDrinks(amount)}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-3 text-sm text-muted-foreground">
+                    {selectedOption
+                      ? `If ${linkedBet.options.find((option) => option.id === selectedOption)?.label ?? 'that side'} wins, projected profit is +${formatDrinks(selectedProjection)} drinks.`
+                      : 'Pick a side to preview your projected profit.'}
+                  </div>
+                  {userWager && (
+                    <div className="mt-2 text-sm text-card-foreground">
+                      Your current wager: {formatDrinks(userWager.wager.drinks)} on {linkedBet.options.find((option) => option.id === userWager.optionId)?.label ?? 'Unknown'}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => void handleWager()}
+                    disabled={!selectedOption || busyAction != null}
+                    className="mt-4 rounded-xl border-2 border-border bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-brutal-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px] disabled:opacity-60"
+                  >
+                    {userWager ? 'Update wager' : 'Place wager'}
+                  </button>
+                </div>
+              )}
+
+              {!canPlaceSideBet && (
+                <div className="mt-4 rounded-2xl border-2 border-border bg-card p-4 text-sm text-card-foreground">
+                  {linkedBet.status === 'pending_result' && (
+                    <>Proposed winner: {linkedBet.options.find((option) => option.id === linkedBet.pendingResultOptionId)?.label ?? 'Unknown'}.</>
+                  )}
+                  {linkedBet.status === 'disputed' && <>Crew voting is active for this result.</>}
+                  {linkedBet.status === 'resolved' && (
+                    <>Winning side: {linkedBet.options.find((option) => option.id === linkedBet.result)?.label ?? 'Unknown'}. Your net: {formatDrinks(userOutcome?.netResult ?? 0)}.</>
+                  )}
+                  {(linkedBet.status === 'void' || linkedBet.status === 'cancelled') && (
+                    <>{linkedBet.voidReason ?? 'This linked bet was voided.'}</>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="relative overflow-hidden rounded-[1.75rem] border-3 border-border bg-[#2d1a10] shadow-[0_16px_0_0_var(--border)]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,214,153,0.2),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(0,0,0,0.2))]" />
