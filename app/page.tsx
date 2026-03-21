@@ -12,6 +12,7 @@ import { LeaderboardScreen } from '@/components/leaderboard-screen'
 import { CrewScreen } from '@/components/crew-screen'
 import { CreateBetModal } from '@/components/create-bet-modal'
 import { ProfileModal } from '@/components/profile-modal'
+import { LoadingSpinner } from '@/components/loading-spinner'
 import {
   buildAppSession,
   clearGuestSessionCookie,
@@ -792,14 +793,12 @@ export default function BeerScoreApp() {
 
   if (!isAuthReady || (session && !isDataReady)) {
     return (
-      <main className="min-h-screen bg-background px-6 py-12">
-        <div className="mx-auto flex min-h-[70vh] max-w-sm flex-col items-center justify-center text-center">
-          <div className="mb-4 h-14 w-14 animate-pulse rounded-2xl border-3 border-border bg-primary/20" />
-          <h1 className="text-2xl text-foreground">Checking your tab</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Restoring your BeerScore session and verifying it with Supabase.
-          </p>
-        </div>
+      <main className="min-h-screen bg-background">
+        <LoadingSpinner
+          message="Checking your tab…"
+          submessage="Restoring your session"
+          className="min-h-screen"
+        />
       </main>
     )
   }

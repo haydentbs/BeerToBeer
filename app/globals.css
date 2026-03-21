@@ -186,6 +186,19 @@
   }
 }
 
+/* Spinning bottle loading animation */
+@keyframes bottle-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+.animate-bottle-spin {
+  animation: bottle-spin 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
 /* Hide scrollbar for cleaner mobile look */
 @layer utilities {
   .scrollbar-hide {
