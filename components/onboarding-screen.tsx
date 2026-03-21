@@ -62,7 +62,7 @@ export function OnboardingScreen({
           </div>
         </div>
 
-        <h1 className="text-3xl font-bold text-foreground text-center mb-1">BeerScore</h1>
+        <h1 className="text-3xl text-foreground text-center mb-1">BeerScore</h1>
         <p className="text-muted-foreground text-center text-base mb-8 max-w-xs">
           Jump in as a guest with a cookie-backed session, or continue with Google for a saved account.
         </p>
@@ -123,7 +123,7 @@ export function OnboardingScreen({
           <button
             type="submit"
             disabled={isSubmitting || !name.trim() || !crewCode.trim()}
-            className="w-full py-4 px-6 rounded-xl bg-primary text-primary-foreground font-bold text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
+            className="w-full py-4 px-6 rounded-xl bg-primary text-primary-foreground font-display font-normal text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
           >
             <Users className="w-5 h-5" />
             Join as Guest
@@ -139,7 +139,7 @@ export function OnboardingScreen({
             type="button"
             onClick={() => void handleGoogleSubmit()}
             disabled={authDisabled}
-            className="w-full py-4 px-6 rounded-xl bg-card text-card-foreground font-bold text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
+            className="w-full py-4 px-6 rounded-xl bg-card text-card-foreground font-sans font-semibold text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
           >
             <LogIn className="w-5 h-5" />
             {isSubmitting ? 'Opening Google…' : 'Continue with Google'}

@@ -167,7 +167,7 @@ export function BetCard({ bet, onWager }: BetCardProps) {
             </div>
             <button
               onClick={handleWager}
-              className="px-6 py-3 rounded-xl bg-primary text-primary-foreground font-bold border-2 border-border shadow-[3px_3px_0px_0px_var(--border)] active:shadow-none active:translate-x-[3px] active:translate-y-[3px] transition-all"
+              className="px-6 py-3 rounded-xl bg-primary text-primary-foreground font-display font-normal border-2 border-border shadow-[3px_3px_0px_0px_var(--border)] active:shadow-none active:translate-x-[3px] active:translate-y-[3px] transition-all"
             >
               Place Bet
             </button>

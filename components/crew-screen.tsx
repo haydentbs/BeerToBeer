@@ -134,7 +134,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
               setNightThemeOverride(null)
               setShowStartNight(true)
             }}
-            className="w-full p-4 rounded-xl bg-primary text-primary-foreground font-bold text-lg border-3 border-border shadow-[4px_4px_0px_0px_var(--border)] active:shadow-none active:translate-x-[4px] active:translate-y-[4px] transition-all flex items-center justify-center gap-2"
+            className="w-full p-4 rounded-xl bg-primary text-primary-foreground font-display font-normal text-lg border-3 border-border shadow-[4px_4px_0px_0px_var(--border)] active:shadow-none active:translate-x-[4px] active:translate-y-[4px] transition-all flex items-center justify-center gap-2"
           >
             <Moon className="h-5 w-5" />
             Start a Night
@@ -235,7 +235,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
             </div>
 
             <button
-              className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold border-2 border-border flex items-center justify-center gap-2"
+              className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-display font-normal border-2 border-border flex items-center justify-center gap-2"
             >
               <ExternalLink className="h-4 w-4" />
               Share Link
@@ -705,7 +705,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                 onStartNight(nightThemeOverride ?? undefined)
                 setShowStartNight(false)
               }}
-              className="w-full p-4 rounded-xl bg-primary text-primary-foreground font-bold text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex items-center justify-center gap-2"
+              className="w-full p-4 rounded-xl bg-primary text-primary-foreground font-display font-normal text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex items-center justify-center gap-2"
             >
               <Moon className="h-5 w-5" />
               Let&apos;s Go

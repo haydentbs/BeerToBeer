@@ -162,7 +162,7 @@ export function HomeScreen({
             <div className="w-full max-w-xs space-y-3">
               <button
                 onClick={() => setShowAction('create')}
-                className="w-full py-4 px-6 rounded-xl bg-primary text-primary-foreground font-bold text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex items-center justify-center gap-2"
+                className="w-full py-4 px-6 rounded-xl bg-primary text-primary-foreground font-display font-normal text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex items-center justify-center gap-2"
               >
                 Create a Crew
                 <ArrowRight className="w-5 h-5" />
@@ -421,7 +421,7 @@ export function HomeScreen({
                 <button
                   type="submit"
                   disabled={!newCrewName.trim()}
-                  className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-bold border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
+                  className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-display font-normal border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
                 >
                   Create
                   <ArrowRight className="w-4 h-4" />
@@ -475,7 +475,7 @@ export function HomeScreen({
                 <button
                   type="submit"
                   disabled={!joinCode.trim()}
-                  className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-bold border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
+                  className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-display font-normal border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
                 >
                   Join
                   <ArrowRight className="w-4 h-4" />

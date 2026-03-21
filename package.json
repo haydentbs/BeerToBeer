@@ -12,6 +12,7 @@
     "test:unit": "vitest run tests/unit",
     "test:eval": "vitest run tests/eval",
     "test:integration": "vitest run tests/integration",
+    "font-previews:capture": "bash scripts/capture-font-previews.sh",
     "test:e2e": "playwright test",
     "test:e2e:setup": "playwright test tests/e2e/auth.setup.ts",
     "test:ci": "npm run typecheck && npm run test:unit && npm run test:eval"

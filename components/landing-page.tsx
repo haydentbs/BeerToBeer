@@ -35,7 +35,7 @@ export function LandingPage({ onJoin, onCreate }: LandingPageProps) {
           </div>
         </div>
 
-        <h1 className="text-4xl font-bold text-foreground text-center mb-2">BeerScore</h1>
+        <h1 className="text-4xl text-foreground text-center mb-2">BeerScore</h1>
         <p className="text-muted-foreground text-center text-lg mb-8 max-w-xs">
           The betting app where the stakes are real drinks.
         </p>
@@ -61,7 +61,7 @@ export function LandingPage({ onJoin, onCreate }: LandingPageProps) {
           <div className="w-full max-w-xs space-y-3">
             <button
               onClick={() => setMode('join')}
-              className="w-full py-4 px-6 rounded-xl bg-primary text-primary-foreground font-bold text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex items-center justify-center gap-2"
+              className="w-full py-4 px-6 rounded-xl bg-primary text-primary-foreground font-display font-normal text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all flex items-center justify-center gap-2"
             >
               Join a Room
               <ArrowRight className="w-5 h-5" />
@@ -106,7 +106,7 @@ export function LandingPage({ onJoin, onCreate }: LandingPageProps) {
             <button
               type="submit"
               disabled={!name.trim() || !crewCode.trim()}
-              className="w-full py-4 px-6 rounded-xl bg-primary text-primary-foreground font-bold text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
+              className="w-full py-4 px-6 rounded-xl bg-primary text-primary-foreground font-display font-normal text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
             >
               Join Room
               <ArrowRight className="w-5 h-5" />
@@ -139,7 +139,7 @@ export function LandingPage({ onJoin, onCreate }: LandingPageProps) {
             <button
               type="submit"
               disabled={!name.trim()}
-              className="w-full py-4 px-6 rounded-xl bg-primary text-primary-foreground font-bold text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
+              className="w-full py-4 px-6 rounded-xl bg-primary text-primary-foreground font-display font-normal text-lg border-3 border-border shadow-brutal active:shadow-none active:translate-x-1 active:translate-y-1 transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0 flex items-center justify-center gap-2"
             >
               Create Crew
               <ArrowRight className="w-5 h-5" />

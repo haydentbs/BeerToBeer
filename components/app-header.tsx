@@ -64,7 +64,7 @@ export function AppHeader({
           >
             <ArrowLeft className="w-5 h-5 text-foreground" />
           </button>
-          <h1 className="text-lg font-bold text-foreground truncate">{crewName}</h1>
+          <h1 className="text-lg text-foreground truncate">{crewName}</h1>
         </div>
 
         {/* Net Position + Bell + Avatar */}

@@ -258,7 +258,7 @@ export function BetDetailModal({ bet, isOpen, onClose, onWager }: BetDetailModal
                 </div>
                 <button
                   onClick={handleWager}
-                  className="px-6 py-3 rounded-xl bg-primary text-primary-foreground font-bold border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all"
+                  className="px-6 py-3 rounded-xl bg-primary text-primary-foreground font-display font-normal border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all"
                 >
                   Place Bet
                 </button>

@@ -1,17 +1,25 @@
 import type { Metadata, Viewport } from 'next'
-import { Space_Grotesk, Geist_Mono } from 'next/font/google'
+import { Bungee, Lexend, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { BeerScoreThemeProvider } from '@/components/theme-provider'
 import './globals.css'
 
-const spaceGrotesk = Space_Grotesk({ 
-  subsets: ["latin"],
-  variable: '--font-sans'
-});
-const geistMono = Geist_Mono({ 
-  subsets: ["latin"],
-  variable: '--font-mono'
-});
+/** Display / poster — titles, primary CTAs */
+const bungee = Bungee({
+  weight: '400',
+  subsets: ['latin'],
+  variable: '--font-bungee',
+})
+/** Body & UI — Lexend variable supports 100–900 */
+const lexend = Lexend({
+  subsets: ['latin'],
+  variable: '--font-lexend',
+})
+/** Tertiary — codes, timers, tabular */
+const geistMono = Geist_Mono({
+  subsets: ['latin'],
+  variable: '--font-geist-mono',
+})
 
 export const metadata: Metadata = {
   title: 'BeerScore',
@@ -51,7 +59,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="bg-background">
-      <body className={`${spaceGrotesk.variable} ${geistMono.variable} font-sans antialiased`}>
+      <body
+        className={`${bungee.variable} ${lexend.variable} ${geistMono.variable} font-sans antialiased`}
+      >
         <BeerScoreThemeProvider>
           {children}
         </BeerScoreThemeProvider>

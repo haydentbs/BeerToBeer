@@ -492,7 +492,7 @@ export default function BeerScoreApp() {
       <main className="min-h-screen bg-background px-6 py-12">
         <div className="mx-auto flex min-h-[70vh] max-w-sm flex-col items-center justify-center text-center">
           <div className="mb-4 h-14 w-14 animate-pulse rounded-2xl border-3 border-border bg-primary/20" />
-          <h1 className="text-2xl font-bold text-foreground">Checking your tab</h1>
+          <h1 className="text-2xl text-foreground">Checking your tab</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Restoring your BeerScore session and verifying it with Supabase.
           </p>
@@ -569,7 +569,7 @@ export default function BeerScoreApp() {
               </p>
               <button
                 onClick={() => handleStartNight()}
-                className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all"
+                className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-display font-normal border-2 border-border shadow-brutal-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all"
               >
                 Start tonight's tab
               </button>

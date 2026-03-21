@@ -68,8 +68,10 @@
 }
 
 @theme inline {
-  --font-sans: 'Space Grotesk', 'Geist Fallback';
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  /* Typography: Bungee (display) · Lexend (UI/body, weights below) · Geist Mono (tertiary) */
+  --font-sans: var(--font-lexend);
+  --font-display: var(--font-bungee);
+  --font-mono: var(--font-geist-mono);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -117,7 +119,24 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-normal;
+  }
+  /* Primary: Bungee — page titles, hero wordmarks */
+  h1 {
+    @apply font-display font-normal tracking-tight;
+  }
+  /* Secondary: Lexend — section headings (weight ladder: semibold → bold for emphasis) */
+  h2 {
+    @apply font-sans font-semibold tracking-tight text-foreground;
+  }
+  h3 {
+    @apply font-sans font-semibold text-foreground;
+  }
+  h4 {
+    @apply font-sans font-medium text-foreground;
+  }
+  strong {
+    @apply font-bold;
   }
 }
 
@@ -142,6 +161,28 @@
   }
   .shadow-brutal-sm {
     box-shadow: 2px 2px 0px 0px var(--border);
+  }
+
+  /* Semantic type tiers (Lexend weight scale) */
+  .text-body {
+    @apply font-sans font-normal;
+  }
+  .text-label {
+    @apply font-sans font-medium;
+  }
+  .text-heading {
+    @apply font-sans font-semibold;
+  }
+  .text-emphasis {
+    @apply font-sans font-bold;
+  }
+  /* Primary display (Bungee) */
+  .text-display {
+    @apply font-display font-normal;
+  }
+  /* Tertiary: mono — codes, invite codes, timers */
+  .text-mono-tertiary {
+    @apply font-mono text-sm font-medium tabular-nums;
   }
 }
 
