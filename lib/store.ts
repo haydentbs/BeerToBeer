@@ -50,11 +50,27 @@ export interface Night {
   participants: User[]
 }
 
+export interface PastBetSummary {
+  title: string
+  type: 'prop' | 'h2h'
+  winner: string
+  pool: number
+}
+
+export interface PastNightPlayer {
+  user: User
+  net: number
+}
+
 export interface PastNight {
+  id: string
   name: string
   date: string
   bets: number
   winner: string
+  duration: string
+  betDetails: PastBetSummary[]
+  leaderboard: PastNightPlayer[]
 }
 
 export interface Crew {
@@ -271,9 +287,46 @@ export const mockCrews: Crew[] = [
     currentNight: mockCurrentNight,
     inviteCode: 'USUAL-24',
     pastNights: [
-      { name: "Thursday at The Local", date: "Mar 14", bets: 8, winner: "Sarah" },
-      { name: "Saturday Game Night", date: "Mar 9", bets: 12, winner: "You" },
-      { name: "Jake's Birthday", date: "Mar 2", bets: 15, winner: "Jake" },
+      {
+        id: 'night-1', name: "Thursday at The Local", date: "Mar 14", bets: 8, winner: "Sarah", duration: "4h 23m",
+        betDetails: [
+          { title: "Will bartender remember Sarah's order?", type: 'prop', winner: "Yes", pool: 4.5 },
+          { title: "Pool match: Jake vs Mike", type: 'h2h', winner: "Jake", pool: 6.0 },
+          { title: "Over/under 3 rounds before midnight", type: 'prop', winner: "Over", pool: 3.0 },
+          { title: "First to spill a drink", type: 'prop', winner: "Emma", pool: 2.5 },
+        ],
+        leaderboard: [
+          { user: mockUsers[1], net: 3.2 }, { user: mockUsers[0], net: 0.8 },
+          { user: mockUsers[2], net: -0.5 }, { user: mockUsers[3], net: -1.2 },
+          { user: mockUsers[4], net: -2.3 },
+        ],
+      },
+      {
+        id: 'night-2', name: "Saturday Game Night", date: "Mar 9", bets: 12, winner: "You", duration: "6h 10m",
+        betDetails: [
+          { title: "Darts tournament winner", type: 'h2h', winner: "You", pool: 8.0 },
+          { title: "Will Dave mention his ex?", type: 'prop', winner: "Yes", pool: 5.0 },
+          { title: "Beer pong: Sarah & Jake vs You & Mike", type: 'h2h', winner: "You & Mike", pool: 4.0 },
+        ],
+        leaderboard: [
+          { user: mockUsers[0], net: 5.4 }, { user: mockUsers[3], net: 1.2 },
+          { user: mockUsers[1], net: -0.8 }, { user: mockUsers[2], net: -2.1 },
+          { user: mockUsers[4], net: -3.7 },
+        ],
+      },
+      {
+        id: 'night-3', name: "Jake's Birthday", date: "Mar 2", bets: 15, winner: "Jake", duration: "7h 45m",
+        betDetails: [
+          { title: "Jake finishes the birthday challenge", type: 'prop', winner: "Yes", pool: 10.0 },
+          { title: "Karaoke: best performance", type: 'prop', winner: "Jake", pool: 6.0 },
+          { title: "Last person standing", type: 'prop', winner: "Mike", pool: 4.5 },
+        ],
+        leaderboard: [
+          { user: mockUsers[2], net: 6.8 }, { user: mockUsers[3], net: 1.5 },
+          { user: mockUsers[0], net: -1.0 }, { user: mockUsers[1], net: -3.2 },
+          { user: mockUsers[4], net: -4.1 },
+        ],
+      },
     ],
   },
   {
@@ -283,8 +336,8 @@ export const mockCrews: Crew[] = [
     currentNight: undefined,
     inviteCode: 'WORK-24',
     pastNights: [
-      { name: "Friday Beers", date: "Mar 7", bets: 5, winner: "Priya" },
-      { name: "Launch Party", date: "Feb 28", bets: 9, winner: "You" },
+      { id: 'wn-1', name: "Friday Beers", date: "Mar 7", bets: 5, winner: "Priya", duration: "3h 15m", betDetails: [], leaderboard: [] },
+      { id: 'wn-2', name: "Launch Party", date: "Feb 28", bets: 9, winner: "You", duration: "5h 30m", betDetails: [], leaderboard: [] },
     ],
   },
   {
@@ -294,9 +347,9 @@ export const mockCrews: Crew[] = [
     currentNight: undefined,
     inviteCode: 'CLGB-24',
     pastNights: [
-      { name: "Homecoming", date: "Feb 15", bets: 22, winner: "Brody" },
-      { name: "Super Bowl", date: "Feb 9", bets: 18, winner: "Marcus" },
-      { name: "New Year's", date: "Jan 1", bets: 31, winner: "You" },
+      { id: 'cn-1', name: "Homecoming", date: "Feb 15", bets: 22, winner: "Brody", duration: "8h 20m", betDetails: [], leaderboard: [] },
+      { id: 'cn-2', name: "Super Bowl", date: "Feb 9", bets: 18, winner: "Marcus", duration: "5h 45m", betDetails: [], leaderboard: [] },
+      { id: 'cn-3', name: "New Year's", date: "Jan 1", bets: 31, winner: "You", duration: "9h 10m", betDetails: [], leaderboard: [] },
     ],
   },
 ]

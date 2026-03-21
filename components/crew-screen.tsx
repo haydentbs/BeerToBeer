@@ -1,26 +1,27 @@
 'use client'
 
 import { useState } from 'react'
-import { Copy, Check, ExternalLink, Moon, Settings, Users, Plus, Crown, X, Pencil, UserMinus, Trash2, LogOut, ChevronRight, AlertTriangle } from 'lucide-react'
+import { Copy, Check, ExternalLink, Moon, Settings, Users, Plus, Crown, X, Pencil, UserMinus, Trash2, LogOut, ChevronRight, AlertTriangle, Clock, Trophy, Swords, HelpCircle, Beer } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { currentUser, type Crew } from '@/lib/store'
+import { currentUser, type Crew, type PastNight } from '@/lib/store'
 
 interface CrewScreenProps {
   crew: Crew
   onStartNight: () => void
-  onEndNight: () => void
+  onLeaveNight: () => void
   onRenameCrew: (name: string) => void
   onKickMember: (memberId: string) => void
   onDeleteCrew: () => void
   onLeaveCrew: () => void
 }
 
-export function CrewScreen({ crew, onStartNight, onEndNight, onRenameCrew, onKickMember, onDeleteCrew, onLeaveCrew }: CrewScreenProps) {
+export function CrewScreen({ crew, onStartNight, onLeaveNight, onRenameCrew, onKickMember, onDeleteCrew, onLeaveCrew }: CrewScreenProps) {
   const [showInvite, setShowInvite] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showRename, setShowRename] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showKickConfirm, setShowKickConfirm] = useState<string | null>(null)
+  const [selectedNight, setSelectedNight] = useState<PastNight | null>(null)
   const [renameValue, setRenameValue] = useState(crew.name)
   const [copied, setCopied] = useState(false)
 
@@ -79,12 +80,13 @@ export function CrewScreen({ crew, onStartNight, onEndNight, onRenameCrew, onKic
                   <span className="font-semibold text-win">Night Active</span>
                 </div>
                 <p className="text-sm text-card-foreground mt-1">{crew.currentNight.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Auto-closes after inactivity</p>
               </div>
               <button
-                onClick={onEndNight}
+                onClick={onLeaveNight}
                 className="px-4 py-2 rounded-lg border-2 border-border bg-card text-card-foreground font-semibold text-sm hover:bg-surface transition-colors"
               >
-                End Night
+                I&apos;m Out
               </button>
             </div>
           </div>
@@ -206,25 +208,29 @@ export function CrewScreen({ crew, onStartNight, onEndNight, onRenameCrew, onKic
         <div>
           <h3 className="font-bold text-foreground uppercase tracking-wide mb-3">Recent Nights</h3>
           <div className="space-y-3">
-            {crew.pastNights.map((night, i) => (
-              <div
-                key={i}
-                className="bg-card rounded-xl border-2 border-border p-4 flex items-center justify-between"
+            {crew.pastNights.map((night) => (
+              <button
+                key={night.id}
+                onClick={() => setSelectedNight(night)}
+                className="w-full bg-card rounded-xl border-2 border-border p-4 flex items-center justify-between text-left hover:border-primary/50 transition-colors"
               >
                 <div>
                   <div className="font-semibold text-card-foreground">{night.name}</div>
-                  <div className="text-xs text-muted-foreground">{night.date} · {night.bets} bets</div>
+                  <div className="text-xs text-muted-foreground">{night.date} · {night.bets} bets · {night.duration}</div>
                 </div>
-                <div className="text-right">
-                  <div className="text-xs text-muted-foreground">Winner</div>
-                  <div className={cn(
-                    'font-bold',
-                    night.winner === 'You' ? 'text-win' : 'text-card-foreground'
-                  )}>
-                    {night.winner}
+                <div className="flex items-center gap-2">
+                  <div className="text-right">
+                    <div className="text-xs text-muted-foreground">Winner</div>
+                    <div className={cn(
+                      'font-bold',
+                      night.winner === 'You' ? 'text-win' : 'text-card-foreground'
+                    )}>
+                      {night.winner}
+                    </div>
                   </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -411,6 +417,118 @@ export function CrewScreen({ crew, onStartNight, onEndNight, onRenameCrew, onKic
             </div>
 
             {/* Safe area padding to clear bottom nav */}
+            <div className="h-20 sm:h-4 shrink-0" />
+          </div>
+        </div>
+      )}
+
+      {/* Past Night Detail Modal */}
+      {selectedNight && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div
+            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            onClick={() => setSelectedNight(null)}
+          />
+          <div className="relative w-full max-w-sm max-h-[85vh] bg-card rounded-t-2xl sm:rounded-2xl border-3 border-border overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="p-4 border-b-2 border-border">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-lg font-bold text-card-foreground">{selectedNight.name}</h3>
+                <button
+                  onClick={() => setSelectedNight(null)}
+                  className="p-1.5 rounded-lg hover:bg-surface transition-colors"
+                >
+                  <X className="h-5 w-5 text-card-foreground" />
+                </button>
+              </div>
+              <p className="text-sm text-muted-foreground">{selectedNight.date} · {selectedNight.duration}</p>
+            </div>
+
+            {/* Content */}
+            <div className="overflow-y-auto flex-1 p-4 space-y-5">
+              {/* Stats Row */}
+              <div className="flex gap-3">
+                <div className="flex-1 p-3 rounded-xl bg-surface border-2 border-border text-center">
+                  <div className="text-2xl font-bold text-primary">{selectedNight.bets}</div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">Bets</div>
+                </div>
+                <div className="flex-1 p-3 rounded-xl bg-surface border-2 border-border text-center">
+                  <div className="text-2xl font-bold text-primary">
+                    {selectedNight.betDetails.reduce((sum, b) => sum + b.pool, 0).toFixed(1)}
+                  </div>
+                  <div className="text-xs text-muted-foreground uppercase tracking-wide">Pool</div>
+                </div>
+                <div className="flex-1 p-3 rounded-xl bg-win/10 border-2 border-win text-center">
+                  <Trophy className="h-5 w-5 text-win mx-auto mb-0.5" />
+                  <div className="text-sm font-bold text-win">{selectedNight.winner}</div>
+                </div>
+              </div>
+
+              {/* Leaderboard */}
+              {selectedNight.leaderboard.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Standings</h4>
+                  <div className="bg-surface rounded-xl border-2 border-border overflow-hidden">
+                    {selectedNight.leaderboard.map((entry, i) => (
+                      <div
+                        key={entry.user.id}
+                        className="flex items-center justify-between p-3 border-b border-border last:border-b-0"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className={cn(
+                            'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold',
+                            i === 0 ? 'bg-primary text-primary-foreground' : 'bg-border text-foreground'
+                          )}>
+                            {i + 1}
+                          </span>
+                          <span className="font-semibold text-foreground">
+                            {entry.user.id === currentUser.id ? 'You' : entry.user.name}
+                          </span>
+                        </div>
+                        <span className={cn(
+                          'font-bold font-mono',
+                          entry.net > 0 ? 'text-win' : entry.net < 0 ? 'text-loss' : 'text-foreground'
+                        )}>
+                          {entry.net > 0 ? '+' : ''}{entry.net.toFixed(1)} 🍺
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Bet Results */}
+              {selectedNight.betDetails.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Bet Results</h4>
+                  <div className="space-y-2">
+                    {selectedNight.betDetails.map((bet, i) => (
+                      <div key={i} className="bg-surface rounded-xl border-2 border-border p-3">
+                        <div className="flex items-start gap-2.5">
+                          <div className="mt-0.5">
+                            {bet.type === 'h2h' ? (
+                              <Swords className="h-4 w-4 text-primary" />
+                            ) : (
+                              <HelpCircle className="h-4 w-4 text-primary" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-foreground text-sm">{bet.title}</div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs text-win font-semibold">Winner: {bet.winner}</span>
+                              <span className="text-xs text-muted-foreground">·</span>
+                              <span className="text-xs text-muted-foreground">{bet.pool} drinks in pool</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Bottom padding for mobile */}
             <div className="h-20 sm:h-4 shrink-0" />
           </div>
         </div>

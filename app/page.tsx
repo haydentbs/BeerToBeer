@@ -346,8 +346,8 @@ export default function BeerScoreApp() {
     // Mock UI only for now.
   }
 
-  const handleEndNight = () => {
-    // Mock UI only for now.
+  const handleLeaveNight = () => {
+    // Mock UI only for now — user leaves the active night
   }
 
   if (!isAuthReady) {
@@ -454,7 +454,7 @@ export default function BeerScoreApp() {
           <CrewScreen
                 crew={activeCrew}
                 onStartNight={handleStartNight}
-                onEndNight={handleEndNight}
+                onLeaveNight={handleLeaveNight}
                 onRenameCrew={handleRenameCrew}
                 onKickMember={handleKickMember}
                 onDeleteCrew={handleDeleteCrew}
