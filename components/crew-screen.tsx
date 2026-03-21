@@ -106,7 +106,7 @@ export function CrewScreen({ crew, currentUserId, onStartNight, onLeaveNight, on
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-win animate-pulse" />
-                    <span className="font-semibold text-card-foreground">{crew.currentNight.name}</span>
+                    <span className="font-semibold text-foreground">{crew.currentNight.name}</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {count} {count === 1 ? 'person' : 'people'} still going
