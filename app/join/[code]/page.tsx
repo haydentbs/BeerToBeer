@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { use, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Beer, CheckCircle, LogIn, Users } from 'lucide-react'
 import { useAppState } from '@/lib/app-state'
@@ -42,6 +42,10 @@ export default function JoinPage({ params }: { params: Promise<{ code: string }>
   const [localNotice, setLocalNotice] = useState<string | null>(null)
   const [joinAttempted, setJoinAttempted] = useState(false)
 
+  // Stable ref so the effect doesn't re-fire when handleJoinCrew changes identity
+  const handleJoinCrewRef = useRef(handleJoinCrew)
+  handleJoinCrewRef.current = handleJoinCrew
+
   // If already authenticated, check if already in the crew or auto-join
   const normalizedCode = crewCode.replace(/[^A-Z0-9]/g, '')
   const existingCrew = visibleCrews.find(
@@ -62,14 +66,14 @@ export default function JoinPage({ params }: { params: Promise<{ code: string }>
     // Not in this crew yet — try to join
     if (!joinAttempted) {
       setJoinAttempted(true)
-      void handleJoinCrew(crewCode).then((success) => {
+      void handleJoinCrewRef.current(crewCode).then((success) => {
         // handleJoinCrew navigates on success
         if (!success) {
           setLocalError('Could not join this crew. The code may be invalid.')
         }
       })
     }
-  }, [isAuthReady, isDataReady, session, existingCrew, crewCode, joinAttempted, handleJoinCrew, router])
+  }, [isAuthReady, isDataReady, session, existingCrew, crewCode, joinAttempted, router])
 
   if (isAuthReady && session && existingCrew) {
     return (
@@ -89,7 +93,20 @@ export default function JoinPage({ params }: { params: Promise<{ code: string }>
     )
   }
 
+  if (isAuthReady && session && !isDataReady) {
+    return (
+      <main className="min-h-screen bg-background">
+        <LoadingSpinner
+          message={loadingCopy?.message ?? 'Checking your tab\u2026'}
+          submessage={loadingCopy?.submessage ?? 'Loading your crews'}
+          className="min-h-screen"
+        />
+      </main>
+    )
+  }
+
   if (isAuthReady && session) {
+    // Data is ready but we're not in the crew — auto-join is running via the effect
     return (
       <main className="min-h-screen bg-background">
         <LoadingSpinner
