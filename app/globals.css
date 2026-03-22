@@ -140,6 +140,49 @@
   }
 }
 
+@layer utilities {
+  html[data-app-mode='classic'] :is(
+    .bg-card,
+    .bg-card\/70,
+    .bg-surface,
+    .bg-surface\/30,
+    .bg-surface\/50,
+    .bg-surface\/80,
+    .bg-primary\/10,
+    .bg-primary\/12,
+    .bg-primary\/15,
+    .bg-primary\/20,
+    .bg-primary\/25,
+    .bg-primary\/30,
+    .bg-win\/10,
+    .bg-win\/15,
+    .bg-loss\/10,
+    .bg-loss\/15,
+    .bg-muted
+  ).text-foreground,
+  html[data-app-mode='classic'] :is(
+    .bg-card,
+    .bg-card\/70,
+    .bg-surface,
+    .bg-surface\/30,
+    .bg-surface\/50,
+    .bg-surface\/80,
+    .bg-primary\/10,
+    .bg-primary\/12,
+    .bg-primary\/15,
+    .bg-primary\/20,
+    .bg-primary\/25,
+    .bg-primary\/30,
+    .bg-win\/10,
+    .bg-win\/15,
+    .bg-loss\/10,
+    .bg-loss\/15,
+    .bg-muted
+  ) .text-foreground {
+    color: var(--card-foreground);
+  }
+}
+
 /* Custom SettleUp Utilities */
 @layer utilities {
   /* Safe area padding for mobile */

@@ -61,6 +61,7 @@ export function SettleUpThemeProvider({ children }: SettleUpThemeProviderProps) 
     const effectiveTheme = themesDisabled ? 'beer' : activeDrinkTheme
     const vars = generateThemeVars(mode, effectiveTheme)
     const root = document.documentElement
+    root.dataset.appMode = mode
     for (const [key, value] of Object.entries(vars)) {
       root.style.setProperty(key, value)
     }

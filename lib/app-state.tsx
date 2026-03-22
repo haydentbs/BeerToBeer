@@ -70,6 +70,38 @@ import type { CommandResponse, CrewFeedResponse, CrewSnapshotResponse, SessionRe
 
 type AuthSubmittingMode = 'guest' | 'google' | 'dev' | null
 
+interface BeerBombMatchUpdate {
+  matchId: string
+  status?: BeerBombMatch['status']
+  revealedSlotIndices?: number[]
+  currentTurnMembershipId?: string | null
+  winnerMembershipId?: string | null
+  loserMembershipId?: string | null
+  agreedWager?: number | null
+  acceptedAt?: string | Date | null
+  declinedAt?: string | Date | null
+  cancelledAt?: string | Date | null
+  completedAt?: string | Date | null
+  updatedAt?: string | Date | null
+  bombSlotIndex?: number
+}
+
+interface MiniGameMatchRealtimeRow {
+  id: string
+  status: BeerBombMatch['status']
+  revealed_slots?: unknown
+  current_turn_membership_id?: string | null
+  winner_membership_id?: string | null
+  loser_membership_id?: string | null
+  agreed_wager?: number | string | null
+  accepted_at?: string | null
+  declined_at?: string | null
+  cancelled_at?: string | null
+  completed_at?: string | null
+  updated_at?: string | null
+  hidden_slot_index?: number | null
+}
+
 interface AuthActionResult {
   error?: string
   message?: string
@@ -208,6 +240,31 @@ export function useAppState(): AppStateValue {
 // ---------------------------------------------------------------------------
 
 const PENDING_GUEST_CLAIM_KEY = 'settleup_pending_guest_claim'
+
+function normalizeRevealedSlotIndices(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  return value
+    .map((entry) => Number(entry))
+    .filter((entry) => Number.isInteger(entry) && entry >= 0)
+}
+
+export function mapMiniGameMatchRowToUpdate(row: MiniGameMatchRealtimeRow): BeerBombMatchUpdate {
+  return {
+    matchId: row.id,
+    status: row.status,
+    revealedSlotIndices: normalizeRevealedSlotIndices(row.revealed_slots),
+    currentTurnMembershipId: row.current_turn_membership_id ?? null,
+    winnerMembershipId: row.winner_membership_id ?? null,
+    loserMembershipId: row.loser_membership_id ?? null,
+    agreedWager: row.agreed_wager != null ? Number(row.agreed_wager) : null,
+    acceptedAt: row.accepted_at ?? null,
+    declinedAt: row.declined_at ?? null,
+    cancelledAt: row.cancelled_at ?? null,
+    completedAt: row.completed_at ?? null,
+    updatedAt: row.updated_at ?? null,
+    bombSlotIndex: row.hidden_slot_index ?? undefined,
+  }
+}
 
 function hasOAuthCallbackParams() {
   if (typeof window === 'undefined') return false
@@ -713,7 +770,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const beerBombChannelRef = useRef<ReturnType<SupabaseClient['channel']> | null>(null)
 
   // Helper: merge match update fields into crews state
-  const applyBeerBombMatchUpdate = useCallback((matchUpdate: any) => {
+  const applyBeerBombMatchUpdate = useCallback((matchUpdate: BeerBombMatchUpdate) => {
     if (!matchUpdate?.matchId) return
     startTransition(() => {
       setCrews((current) =>
@@ -729,7 +786,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             ...existing,
             status: matchUpdate.status ?? existing.status,
             revealedSlotIndices: matchUpdate.revealedSlotIndices ?? existing.revealedSlotIndices,
-            currentTurnMembershipId: matchUpdate.currentTurnMembershipId ?? null,
+            currentTurnMembershipId: matchUpdate.currentTurnMembershipId ?? existing.currentTurnMembershipId,
             winnerMembershipId: matchUpdate.winnerMembershipId ?? existing.winnerMembershipId,
             loserMembershipId: matchUpdate.loserMembershipId ?? existing.loserMembershipId,
             agreedWager: matchUpdate.agreedWager != null ? Number(matchUpdate.agreedWager) : existing.agreedWager,
@@ -737,7 +794,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             completedAt: matchUpdate.completedAt ? new Date(matchUpdate.completedAt) : existing.completedAt,
             declinedAt: matchUpdate.declinedAt ? new Date(matchUpdate.declinedAt) : existing.declinedAt,
             cancelledAt: matchUpdate.cancelledAt ? new Date(matchUpdate.cancelledAt) : existing.cancelledAt,
-            updatedAt: new Date(),
+            updatedAt: matchUpdate.updatedAt ? new Date(matchUpdate.updatedAt) : new Date(),
             bombSlotIndex: matchUpdate.bombSlotIndex ?? existing.bombSlotIndex,
           }
 
@@ -752,11 +809,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  // Subscribe to broadcast channel for the selected beer bomb match
+  // Subscribe to the selected beer bomb match via DB Realtime updates.
   useEffect(() => {
     const matchId = selectedBeerBombMatchId
     if (!matchId || !supabaseConfigured) {
-      // Clean up any existing channel
       if (beerBombChannelRef.current) {
         const supabase = getSupabaseBrowserClient()
         void supabase.removeChannel(beerBombChannelRef.current)
@@ -769,12 +825,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     let cancelled = false
 
     const channel = supabase
-      .channel(`beer-bomb-live:${matchId}`, { config: { broadcast: { self: false } } })
-      .on('broadcast', { event: 'match_update' }, ({ payload }: any) => {
-        if (!cancelled && payload) {
-          applyBeerBombMatchUpdate(payload)
+      .channel(`beer-bomb-db:${matchId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'mini_game_matches',
+          filter: `id=eq.${matchId}`,
+        },
+        (payload: any) => {
+          if (!cancelled && payload?.new) {
+            applyBeerBombMatchUpdate(mapMiniGameMatchRowToUpdate(payload.new as MiniGameMatchRealtimeRow))
+          }
         }
-      })
+      )
       .subscribe()
 
     beerBombChannelRef.current = channel
@@ -1405,53 +1470,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }, 'Could not open this Beer Bomb invite.')
   }
 
-  // Broadcast updated match state to the other player via WebSocket
-  const broadcastMatchUpdate = (matchId: string, payload: any) => {
-    const match = payload.changed?.snapshot?.crew?.currentNight?.miniGameMatches?.find(
-      (m: any) => m.id === matchId
-    )
-    if (!match) return
-
-    // Build a lightweight update payload from the snapshot match
-    const update = {
-      matchId: match.id,
-      status: match.status,
-      revealedSlotIndices: match.revealedSlotIndices ?? match.revealedSlots ?? [],
-      currentTurnMembershipId: match.currentTurnMembershipId ?? match.currentTurn?.membershipId ?? null,
-      winnerMembershipId: match.winnerMembershipId ?? match.winner?.membershipId ?? null,
-      loserMembershipId: match.loserMembershipId ?? match.loser?.membershipId ?? null,
-      agreedWager: match.agreedWager,
-      acceptedAt: match.acceptedAt,
-      completedAt: match.completedAt,
-      declinedAt: match.declinedAt,
-      cancelledAt: match.cancelledAt,
-      bombSlotIndex: match.bombSlotIndex,
-    }
-
-    // Broadcast to the match channel — the other player picks this up instantly
-    if (supabaseConfigured) {
-      try {
-        const supabase = getSupabaseBrowserClient()
-        const channel = supabase.channel(`beer-bomb-live:${matchId}`)
-        channel.subscribe((status: string) => {
-          if (status === 'SUBSCRIBED') {
-            void channel.send({ type: 'broadcast', event: 'match_update', payload: update })
-            // Unsubscribe after a short delay to clean up the ephemeral channel
-            setTimeout(() => { void supabase.removeChannel(channel) }, 500)
-          }
-        })
-      } catch {
-        // Best-effort; polling backstops
-      }
-    }
-  }
-
   const handleBeerBombAccept = (matchId: string) => {
     if (!activeCrewId) return
     void runMutation(async () => {
       const payload = await respondToMiniGameChallenge({ crewId: activeCrewId, matchId, accepted: true })
       applyCommandPayload(payload)
-      broadcastMatchUpdate(matchId, payload)
     })
   }
 
@@ -1460,7 +1483,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void runMutation(async () => {
       const payload = await respondToMiniGameChallenge({ crewId: activeCrewId, matchId, accepted: false })
       applyCommandPayload(payload)
-      broadcastMatchUpdate(matchId, payload)
     })
   }
 
@@ -1469,7 +1491,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void runMutation(async () => {
       const payload = await cancelMiniGameChallenge({ crewId: activeCrewId, matchId })
       applyCommandPayload(payload)
-      broadcastMatchUpdate(matchId, payload)
     })
   }
 
@@ -1477,7 +1498,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!activeCrewId) return
     const payload = await takeMiniGameTurn({ crewId: activeCrewId, matchId, slotIndex })
     applyCommandPayload(payload)
-    broadcastMatchUpdate(matchId, payload)
     const updatedMatch = payload.changed?.snapshot?.crew?.currentNight?.miniGameMatches?.find((m: any) => m.id === matchId) as BeerBombMatch | undefined
     if (!updatedMatch) return
     return {
