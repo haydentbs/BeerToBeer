@@ -916,7 +916,6 @@ function BeerBombSharePanel({
   opponentName: string
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [showQr, setShowQr] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
 
   const playUrl = typeof window !== 'undefined'
@@ -924,13 +923,13 @@ function BeerBombSharePanel({
     : `/play/${matchId}?crew=${crewInviteCode}`
 
   useEffect(() => {
-    if (!showQr || !canvasRef.current) return
+    if (!canvasRef.current) return
     QRCode.toCanvas(canvasRef.current, playUrl, {
       width: 180,
       margin: 2,
       color: { dark: '#1a1614', light: '#ffffff' },
     })
-  }, [showQr, playUrl])
+  }, [playUrl])
 
   const handleShare = async () => {
     if (typeof navigator !== 'undefined' && navigator.share) {
@@ -959,6 +958,15 @@ function BeerBombSharePanel({
         Share this link to invite {opponentName} or anyone else to join and play.
       </p>
 
+      <div className="mb-3 flex justify-center rounded-xl bg-white p-3">
+        <canvas ref={canvasRef} />
+      </div>
+
+      <div className="mb-3 rounded-xl border-2 border-border bg-card px-3 py-2">
+        <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Invite Link</p>
+        <p className="break-all text-sm text-card-foreground">{playUrl}</p>
+      </div>
+
       <div className="flex gap-2">
         <button
           onClick={() => void handleShare()}
@@ -976,24 +984,7 @@ function BeerBombSharePanel({
             </>
           )}
         </button>
-        <button
-          onClick={() => setShowQr((v) => !v)}
-          className={cn(
-            'flex items-center justify-center rounded-xl border-2 border-border px-3 py-2.5 text-sm font-bold transition-all',
-            showQr
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-card text-card-foreground hover:border-primary/50'
-          )}
-        >
-          <QrCode className="h-5 w-5" />
-        </button>
       </div>
-
-      {showQr && (
-        <div className="mt-3 flex justify-center rounded-xl bg-white p-3">
-          <canvas ref={canvasRef} />
-        </div>
-      )}
     </div>
   )
 }

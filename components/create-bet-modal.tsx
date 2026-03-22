@@ -77,7 +77,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
 
       const opponentName = isExternalOpponent ? 'Open invite' : opponent?.name || 'Another player'
       onCreateMiniGame({
-        title: title.trim() || `Beer Bomb: ${currentUser.name} vs ${opponentName}`,
+        title: title.trim() || 'Beer Bomb',
         opponent: isExternalOpponent
           ? { name: opponentName, isExternal: true }
           : { id: opponent!.id, name: opponentName },
@@ -122,7 +122,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
   const multiOptions = options.map((option) => option.trim()).filter(Boolean)
   const selectedOpponent = challenger ? members.find((user) => user.id === challenger) : null
   const canSubmit = Boolean(
-    title.trim() &&
+    ((mode === 'beerBomb') || title.trim()) &&
       (
         (mode !== 'h2h' && mode !== 'beerBomb') ||
         challenger ||
