@@ -290,6 +290,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [selectedBeerBombMatchId, setSelectedBeerBombMatchId] = useState<string | null>(null)
 
   const isCrewPollInFlightRef = useRef(false)
+  const isRealtimeSnapshotInFlightRef = useRef(false)
   const applySessionPayloadRef = useRef<(payload: SessionResponse) => void>(() => {})
   const applyCrewSnapshotRef = useRef<(payload: CrewSnapshotResponse) => void>(() => {})
   const applyCommandPayloadRef = useRef<(payload: CommandResponse | CrewFeedResponse) => void>(() => {})
@@ -630,6 +631,76 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const activeCrew = visibleCrews.find((crew) => crew.id === activeCrewId)
   const hasActiveNight = Boolean(activeCrew?.currentNight)
   const activeCrewCursor = activeCrewId ? crewCursorById[activeCrewId] ?? null : null
+
+  useEffect(() => {
+    if (
+      !session ||
+      session.isGuest ||
+      !supabaseConfigured ||
+      !activeCrewId ||
+      !activeCrew?.currentNight?.id ||
+      !isDataReady
+    ) {
+      return
+    }
+
+    const supabase = getSupabaseBrowserClient()
+    const activeNightId = activeCrew.currentNight.id
+    let cancelled = false
+    let snapshotTimer: ReturnType<typeof setTimeout> | null = null
+
+    const requestSnapshot = () => {
+      if (cancelled || isRealtimeSnapshotInFlightRef.current) {
+        return
+      }
+
+      isRealtimeSnapshotInFlightRef.current = true
+      void fetchCrewSnapshotState(activeCrewId)
+        .then((snapshot) => {
+          if (!cancelled) {
+            startTransition(() => {
+              applyCrewSnapshotRef.current(snapshot)
+            })
+          }
+        })
+        .catch(() => {
+          // Best-effort; polling still backstops state convergence.
+        })
+        .finally(() => {
+          isRealtimeSnapshotInFlightRef.current = false
+        })
+    }
+
+    const scheduleSnapshot = () => {
+      if (cancelled) return
+      if (snapshotTimer) clearTimeout(snapshotTimer)
+      snapshotTimer = setTimeout(requestSnapshot, 75)
+    }
+
+    const channel = supabase
+      .channel(`crew:${activeCrewId}:beer-bomb:${activeNightId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'mini_game_matches',
+        filter: `night_id=eq.${activeNightId}`,
+      }, () => {
+        scheduleSnapshot()
+      })
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      if (snapshotTimer) clearTimeout(snapshotTimer)
+      void supabase.removeChannel(channel)
+    }
+  }, [
+    activeCrew?.currentNight?.id,
+    activeCrewId,
+    isDataReady,
+    session,
+    supabaseConfigured,
+  ])
 
   useEffect(() => {
     if (!session || !activeCrewId || !isDataReady || activeCrewCursor == null) return
