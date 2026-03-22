@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Bomb, Check, ChevronRight, Clock, Flame, Swords, Trophy, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Bomb, Check, ChevronRight, Clock, Copy, Flame, QrCode, Share2, Swords, Trophy, X } from 'lucide-react'
+import QRCode from 'qrcode'
 import { cn } from '@/lib/utils'
 import {
   formatDrinks,
@@ -62,6 +63,7 @@ interface BeerBombMatchModalProps {
   linkedBet?: Bet | null
   isOpen: boolean
   currentMembershipId: string | null
+  crewInviteCode?: string
   onClose: () => void
   onAccept: (matchId: string) => Promise<void> | void
   onDecline: (matchId: string) => Promise<void> | void
@@ -323,6 +325,7 @@ export function BeerBombMatchModal({
   linkedBet,
   isOpen,
   currentMembershipId,
+  crewInviteCode,
   onClose,
   onAccept,
   onDecline,
@@ -438,7 +441,6 @@ export function BeerBombMatchModal({
 
     setBusyAction('turn')
     setAnimatingSlotIndex(index)
-    await new Promise((resolve) => window.setTimeout(resolve, 150))
 
     try {
       await onTakeTurn(match.id, index)
@@ -482,11 +484,11 @@ export function BeerBombMatchModal({
       role="dialog"
       aria-modal="true"
       aria-label={match.title}
-      className="fixed inset-0 z-50 flex items-end justify-center"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-3 pb-6 pt-3 sm:px-5 sm:pt-5"
     >
       <div className="absolute inset-0 bg-background/85 backdrop-blur-md" onClick={onClose} />
 
-      <div className="relative mb-0 w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-t-[2rem] border-t-3 border-x-3 border-border bg-card shadow-[0_24px_0_0_var(--border)]">
+      <div className="relative my-0 w-full max-w-3xl max-h-[calc(100vh-1.5rem)] overflow-y-auto rounded-[2rem] border-3 border-border bg-card shadow-[0_24px_0_0_var(--border)] sm:max-h-[calc(100vh-2.5rem)]">
         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-accent to-win" />
 
         <div className="flex items-center justify-between px-5 pt-4">
@@ -521,6 +523,177 @@ export function BeerBombMatchModal({
               <Clock className="h-3.5 w-3.5" />
               {formatRelativeTime(match.createdAt)}
             </span>
+          </div>
+
+          <div className="mb-4 relative overflow-hidden rounded-[1.75rem] border-3 border-border bg-[#2d1a10] shadow-[0_16px_0_0_var(--border)]">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,214,153,0.2),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(0,0,0,0.2))]" />
+            {resolvedBackground ? (
+              <img
+                src={resolvedBackground}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover opacity-90"
+                draggable={false}
+              />
+            ) : (
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,#27130d_0%,#4a2c14_48%,#7c4b1c_100%)]" />
+            )}
+
+            <div className="absolute inset-0 bg-gradient-to-t from-[#130a06]/90 via-[#130a06]/55 to-transparent" />
+            <div className="relative flex min-h-[420px] flex-col justify-between p-4 sm:p-6">
+              <div className="flex items-center justify-between gap-3">
+                <div className="max-w-[70%] rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs font-semibold text-white/85">
+                  {phase === 'your-turn'
+                    ? 'Tap one beer. If the bomb is hiding there, the line explodes.'
+                    : phase === 'your-decision'
+                    ? 'Accept the challenge, then the beers get lined up and the turn order is set.'
+                    : match.status === 'completed'
+                    ? 'The bomb has already been revealed.'
+                    : `Waiting for ${otherPlayer.name} to move.`}
+                </div>
+                <MiniGameStatusBadge phase={phase} currentMembershipId={currentMembershipId} match={match} />
+              </div>
+
+              <div className="mt-10 flex justify-center">
+                <div
+                  className="grid w-full max-w-2xl gap-1.5 sm:gap-3"
+                  style={{ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }}
+                >
+                  {boardSlots.map((slot, index) => {
+                    const locked = !canActOnBoard || slot.state !== 'idle'
+                    const revealed = slot.state === 'safe-empty' || slot.state === 'bomb-hit'
+                    const shouldShake = slot.state === 'bomb-hit'
+
+                    return (
+                      <button
+                        key={slot.index}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => void handleSlotTap(index)}
+                        disabled={locked}
+                        aria-label={`Beer ${index + 1}${revealed && slot.state === 'bomb-hit' ? ', bomb' : revealed ? ', drained' : ''}`}
+                        className={cn(
+                          'relative aspect-[0.78] overflow-hidden rounded-xl border-2 border-white/15 bg-[#1a0e08]/65 px-1 pb-2 pt-1 text-left transition-all',
+                          locked ? 'cursor-default' : 'hover:-translate-y-1 hover:border-primary/60',
+                          slot.state === 'draining' && 'scale-95 border-primary/80 shadow-[0_0_0_2px_rgba(255,195,84,0.25)]',
+                          slot.state === 'bomb-hit' && 'border-loss/70 bg-loss/15',
+                          slot.state === 'safe-empty' && 'border-win/50 bg-win/10'
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            'absolute inset-x-2 top-1 rounded-full transition-all duration-150',
+                            slot.state === 'bomb-hit'
+                              ? 'h-8 bg-loss/70 blur-[2px]'
+                              : slot.state === 'safe-empty'
+                              ? 'h-2.5 bg-win/35'
+                              : slot.state === 'draining'
+                              ? 'h-9 bg-primary/40'
+                              : 'h-10 bg-white/10'
+                          )}
+                        />
+
+                        <div className={cn('relative flex h-full flex-col items-center justify-end gap-1', shouldShake && 'animate-pulse')}>
+                          <div
+                            className={cn(
+                              'flex w-full flex-1 items-center justify-center transition-all duration-150',
+                              slot.state === 'draining' && 'translate-y-2 scale-90 opacity-70',
+                              slot.state === 'safe-empty' && 'translate-y-1 opacity-65',
+                              slot.state === 'bomb-hit' && 'scale-110'
+                            )}
+                          >
+                            {slot.state === 'bomb-hit' ? (
+                              resolvedBeerBomb ? (
+                                <img src={resolvedBeerBomb} alt="" className="h-full w-full object-contain drop-shadow-[0_10px_12px_rgba(0,0,0,0.35)]" />
+                              ) : (
+                                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-loss/20 text-loss">
+                                  <Bomb className="h-7 w-7" />
+                                </div>
+                              )
+                            ) : slot.state === 'safe-empty' ? (
+                              resolvedBeerDrained ? (
+                                <img src={resolvedBeerDrained} alt="" className="h-full w-full object-contain opacity-75" />
+                              ) : (
+                                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-win/30 bg-win/10 text-win">
+                                  <span className="text-[10px] font-black uppercase tracking-[0.3em]">Drained</span>
+                                </div>
+                              )
+                            ) : resolvedBeerIdle ? (
+                              <img src={resolvedBeerIdle} alt="" className="h-full w-full object-contain drop-shadow-[0_10px_12px_rgba(0,0,0,0.35)]" />
+                            ) : (
+                              <div className="flex h-14 w-14 flex-col items-center justify-end rounded-[1.1rem] border border-white/20 bg-[linear-gradient(180deg,#c9a46b_0%,#b17331_48%,#8a4f21_100%)] px-1 pb-2 pt-1">
+                                <div className="mb-1 h-3 w-4 rounded-full bg-[#f7e6b6]" />
+                                <div className="h-7 w-full rounded-b-[0.75rem] bg-[linear-gradient(180deg,#f7d06c_0%,#d89b2e_100%)]" />
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-[10px] font-black uppercase tracking-[0.28em] text-white/75">{index + 1}</span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+                <div className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs font-semibold text-white/80">
+                  {match.status === 'active'
+                    ? `${getMemberLabel(match, match.currentTurnMembershipId)} is up next`
+                    : match.status === 'pending'
+                    ? `Challenge is waiting on ${match.opponent.name}`
+                    : match.status === 'completed'
+                    ? `Winner: ${getMemberLabel(match, match.winnerMembershipId)}`
+                    : `Status: ${match.status}`}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {canCancel && (
+                    <button
+                      onClick={() => void handleCancel()}
+                      disabled={busyAction != null}
+                      className="rounded-xl border-2 border-border bg-surface px-4 py-2 text-sm font-bold text-foreground transition-all hover:border-loss/60 disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                  )}
+
+                  {match.status === 'pending' && (
+                    <>
+                      {isMyDecision && (
+                        <>
+                          <button
+                            onClick={() => void handleDecline()}
+                            disabled={busyAction != null}
+                            className="rounded-xl border-2 border-loss/40 bg-loss/15 px-4 py-2 text-sm font-bold text-loss transition-all hover:bg-loss/25 disabled:opacity-60"
+                          >
+                            Decline
+                          </button>
+                          <button
+                            onClick={() => void handleAccept()}
+                            disabled={busyAction != null}
+                            className="rounded-xl border-2 border-border bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-brutal-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px] disabled:opacity-60"
+                          >
+                            Accept wager
+                          </button>
+                        </>
+                      )}
+                      {!isMyDecision && (
+                        <div className="rounded-xl border-2 border-border bg-surface px-4 py-2 text-sm font-semibold text-muted-foreground">
+                          Waiting for {match.opponent.name}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {match.status === 'completed' && (
+                    <button
+                      onClick={onClose}
+                      className="rounded-xl border-2 border-border bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-brutal-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px]"
+                    >
+                      Close
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="mb-4 rounded-2xl border-3 border-border bg-surface p-4">
@@ -682,176 +855,6 @@ export function BeerBombMatchModal({
               )}
             </div>
           )}
-
-          <div className="relative overflow-hidden rounded-[1.75rem] border-3 border-border bg-[#2d1a10] shadow-[0_16px_0_0_var(--border)]">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,214,153,0.2),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(0,0,0,0.2))]" />
-            {resolvedBackground ? (
-              <img
-                src={resolvedBackground}
-                alt=""
-                className="absolute inset-0 h-full w-full object-cover opacity-90"
-                draggable={false}
-              />
-            ) : (
-              <div className="absolute inset-0 bg-[linear-gradient(180deg,#27130d_0%,#4a2c14_48%,#7c4b1c_100%)]" />
-            )}
-
-            <div className="absolute inset-0 bg-gradient-to-t from-[#130a06]/90 via-[#130a06]/55 to-transparent" />
-            <div className="relative flex min-h-[420px] flex-col justify-between p-4 sm:p-6">
-              <div className="flex items-center justify-between gap-3">
-                <div className="max-w-[70%] rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs font-semibold text-white/85">
-                  {phase === 'your-turn'
-                    ? 'Tap one beer. If the bomb is hiding there, the line explodes.'
-                    : phase === 'your-decision'
-                    ? 'Accept the challenge, then the beers get lined up and the turn order is set.'
-                    : match.status === 'completed'
-                    ? 'The bomb has already been revealed.'
-                    : `Waiting for ${otherPlayer.name} to move.`}
-                </div>
-                <MiniGameStatusBadge phase={phase} currentMembershipId={currentMembershipId} match={match} />
-              </div>
-
-              <div className="mt-10 flex justify-center">
-                <div
-                  className="grid w-full max-w-2xl gap-1.5 sm:gap-3"
-                  style={{ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }}
-                >
-                  {boardSlots.map((slot, index) => {
-                    const locked = !canActOnBoard || slot.state !== 'idle'
-                    const revealed = slot.state === 'safe-empty' || slot.state === 'bomb-hit'
-                    const shouldShake = slot.state === 'bomb-hit'
-
-                    return (
-                      <button
-                        key={slot.index}
-                        onClick={() => void handleSlotTap(index)}
-                        disabled={locked}
-                        aria-label={`Beer ${index + 1}${revealed && slot.state === 'bomb-hit' ? ', bomb' : revealed ? ', drained' : ''}`}
-                        className={cn(
-                          'relative aspect-[0.78] overflow-hidden rounded-xl border-2 border-white/15 bg-[#1a0e08]/65 px-1 pb-2 pt-1 text-left transition-all',
-                          locked ? 'cursor-default' : 'hover:-translate-y-1 hover:border-primary/60',
-                          slot.state === 'draining' && 'scale-95 border-primary/80 shadow-[0_0_0_2px_rgba(255,195,84,0.25)]',
-                          slot.state === 'bomb-hit' && 'border-loss/70 bg-loss/15',
-                          slot.state === 'safe-empty' && 'border-win/50 bg-win/10'
-                        )}
-                      >
-                        <div
-                          className={cn(
-                            'absolute inset-x-2 top-1 rounded-full transition-all duration-150',
-                            slot.state === 'bomb-hit'
-                              ? 'h-8 bg-loss/70 blur-[2px]'
-                              : slot.state === 'safe-empty'
-                              ? 'h-2.5 bg-win/35'
-                              : slot.state === 'draining'
-                              ? 'h-9 bg-primary/40'
-                              : 'h-10 bg-white/10'
-                          )}
-                        />
-
-                        <div className={cn('relative flex h-full flex-col items-center justify-end gap-1', shouldShake && 'animate-pulse')}>
-                          <div
-                            className={cn(
-                              'flex w-full flex-1 items-center justify-center transition-all duration-150',
-                              slot.state === 'draining' && 'translate-y-2 scale-90 opacity-70',
-                              slot.state === 'safe-empty' && 'translate-y-1 opacity-65',
-                              slot.state === 'bomb-hit' && 'scale-110'
-                            )}
-                          >
-                            {slot.state === 'bomb-hit' ? (
-                              resolvedBeerBomb ? (
-                                <img src={resolvedBeerBomb} alt="" className="h-full w-full object-contain drop-shadow-[0_10px_12px_rgba(0,0,0,0.35)]" />
-                              ) : (
-                                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-loss/20 text-loss">
-                                  <Bomb className="h-7 w-7" />
-                                </div>
-                              )
-                            ) : slot.state === 'safe-empty' ? (
-                              resolvedBeerDrained ? (
-                                <img src={resolvedBeerDrained} alt="" className="h-full w-full object-contain opacity-75" />
-                              ) : (
-                                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-win/30 bg-win/10 text-win">
-                                  <span className="text-[10px] font-black uppercase tracking-[0.3em]">Drained</span>
-                                </div>
-                              )
-                            ) : resolvedBeerIdle ? (
-                              <img src={resolvedBeerIdle} alt="" className="h-full w-full object-contain drop-shadow-[0_10px_12px_rgba(0,0,0,0.35)]" />
-                            ) : (
-                              <div className="flex h-14 w-14 flex-col items-center justify-end rounded-[1.1rem] border border-white/20 bg-[linear-gradient(180deg,#c9a46b_0%,#b17331_48%,#8a4f21_100%)] px-1 pb-2 pt-1">
-                                <div className="mb-1 h-3 w-4 rounded-full bg-[#f7e6b6]" />
-                                <div className="h-7 w-full rounded-b-[0.75rem] bg-[linear-gradient(180deg,#f7d06c_0%,#d89b2e_100%)]" />
-                              </div>
-                            )}
-                          </div>
-                          <span className="text-[10px] font-black uppercase tracking-[0.28em] text-white/75">{index + 1}</span>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-                <div className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs font-semibold text-white/80">
-                  {match.status === 'active'
-                    ? `${getMemberLabel(match, match.currentTurnMembershipId)} is up next`
-                    : match.status === 'pending'
-                    ? `Challenge is waiting on ${match.opponent.name}`
-                    : match.status === 'completed'
-                    ? `Winner: ${getMemberLabel(match, match.winnerMembershipId)}`
-                    : `Status: ${match.status}`}
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {canCancel && (
-                    <button
-                      onClick={() => void handleCancel()}
-                      disabled={busyAction != null}
-                      className="rounded-xl border-2 border-border bg-surface px-4 py-2 text-sm font-bold text-foreground transition-all hover:border-loss/60 disabled:opacity-60"
-                    >
-                      Cancel
-                    </button>
-                  )}
-
-                  {match.status === 'pending' && (
-                    <>
-                      {isMyDecision && (
-                        <>
-                          <button
-                            onClick={() => void handleDecline()}
-                            disabled={busyAction != null}
-                            className="rounded-xl border-2 border-loss/40 bg-loss/15 px-4 py-2 text-sm font-bold text-loss transition-all hover:bg-loss/25 disabled:opacity-60"
-                          >
-                            Decline
-                          </button>
-                          <button
-                            onClick={() => void handleAccept()}
-                            disabled={busyAction != null}
-                            className="rounded-xl border-2 border-border bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-brutal-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px] disabled:opacity-60"
-                          >
-                            Accept wager
-                          </button>
-                        </>
-                      )}
-                      {!isMyDecision && (
-                        <div className="rounded-xl border-2 border-border bg-surface px-4 py-2 text-sm font-semibold text-muted-foreground">
-                          Waiting for {match.opponent.name}
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {match.status === 'completed' && (
-                    <button
-                      onClick={onClose}
-                      className="rounded-xl border-2 border-border bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-brutal-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px]"
-                    >
-                      Close
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
 
           <div className="mt-4 flex items-center justify-between rounded-2xl border-2 border-border bg-surface px-4 py-3 text-sm text-muted-foreground">
             <span>

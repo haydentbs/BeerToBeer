@@ -291,6 +291,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const isCrewPollInFlightRef = useRef(false)
   const isRealtimeSnapshotInFlightRef = useRef(false)
+  const isForegroundRefreshInFlightRef = useRef(false)
+  const lastForegroundRefreshAtRef = useRef(0)
   const applySessionPayloadRef = useRef<(payload: SessionResponse) => void>(() => {})
   const applyCrewSnapshotRef = useRef<(payload: CrewSnapshotResponse) => void>(() => {})
   const applyCommandPayloadRef = useRef<(payload: CommandResponse | CrewFeedResponse) => void>(() => {})
@@ -626,6 +628,74 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void loadSnapshot()
     return () => { cancelled = true }
   }, [activeCrewId, crewDataById, isDataReady, session])
+
+  useEffect(() => {
+    if (!session || !isDataReady) return
+
+    let cancelled = false
+    const minRefreshGapMs = 1500
+
+    const refreshForegroundData = async () => {
+      if (cancelled || isForegroundRefreshInFlightRef.current) return
+
+      const now = Date.now()
+      if (now - lastForegroundRefreshAtRef.current < minRefreshGapMs) return
+
+      isForegroundRefreshInFlightRef.current = true
+      lastForegroundRefreshAtRef.current = now
+
+      try {
+        const sessionPayload = await fetchSessionState()
+        if (cancelled) return
+
+        startTransition(() => {
+          applySessionPayloadRef.current(sessionPayload)
+        })
+
+        if (activeCrewId) {
+          const snapshot = await fetchCrewSnapshotState(activeCrewId)
+          if (cancelled) return
+
+          startTransition(() => {
+            applyCrewSnapshotRef.current(snapshot)
+          })
+        }
+      } catch {
+        // Best-effort; keep cached data on screen.
+      } finally {
+        isForegroundRefreshInFlightRef.current = false
+      }
+    }
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void refreshForegroundData()
+      }
+    }
+
+    const handleFocus = () => {
+      void refreshForegroundData()
+    }
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleFocus)
+      window.addEventListener('pageshow', handleFocus)
+    }
+
+    return () => {
+      cancelled = true
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
+      }
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleFocus)
+        window.removeEventListener('pageshow', handleFocus)
+      }
+    }
+  }, [activeCrewId, isDataReady, session])
 
   // Polling for active crew
   const activeCrew = visibleCrews.find((crew) => crew.id === activeCrewId)
