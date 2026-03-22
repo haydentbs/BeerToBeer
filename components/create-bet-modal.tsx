@@ -43,7 +43,6 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
   const [options, setOptions] = useState<string[]>(['', ''])
   const [challenger, setChallenger] = useState<string | null>(null)
   const [isExternalOpponent, setIsExternalOpponent] = useState(false)
-  const [externalOpponentName, setExternalOpponentName] = useState('')
   const [line, setLine] = useState(2.5)
   const [initialOptionIndex, setInitialOptionIndex] = useState(0)
   const [wager, setWager] = useState(1)
@@ -58,7 +57,6 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
     setOptions(['', ''])
     setChallenger(null)
     setIsExternalOpponent(false)
-    setExternalOpponentName('')
     setLine(2.5)
     setInitialOptionIndex(0)
     setWager(1)
@@ -71,17 +69,16 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
 
     const opponent = members.find((user) => user.id === challenger)
     const cleanOptions = options.map((option) => option.trim()).filter(Boolean)
-    const trimmedExternalOpponentName = externalOpponentName.trim()
 
     if (mode === 'beerBomb') {
-      if ((!opponent && !trimmedExternalOpponentName) || !onCreateMiniGame) {
+      if ((!opponent && !isExternalOpponent) || !onCreateMiniGame) {
         return
       }
 
-      const opponentName = trimmedExternalOpponentName || opponent?.name || 'Another player'
+      const opponentName = isExternalOpponent ? 'Open invite' : opponent?.name || 'Another player'
       onCreateMiniGame({
         title: title.trim() || `Beer Bomb: ${currentUser.name} vs ${opponentName}`,
-        opponent: trimmedExternalOpponentName
+        opponent: isExternalOpponent
           ? { name: opponentName, isExternal: true }
           : { id: opponent!.id, name: opponentName },
         wager,
@@ -129,7 +126,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
       (
         (mode !== 'h2h' && mode !== 'beerBomb') ||
         challenger ||
-        (mode === 'beerBomb' && isExternalOpponent && externalOpponentName.trim())
+        (mode === 'beerBomb' && isExternalOpponent)
       ) &&
       (mode !== 'prop' || propFormat !== 'multi' || multiOptions.length >= 3) &&
       (mode !== 'prop' || propFormat !== 'overunder' || (line > 0 && Number.isInteger(line * 2)))
@@ -337,21 +334,9 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
                   )}
                 </div>
                 {mode === 'beerBomb' && isExternalOpponent && (
-                  <div className="mt-3">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Invitee name
-                    </label>
-                    <input
-                      type="text"
-                      value={externalOpponentName}
-                      onChange={(event) => setExternalOpponentName(event.target.value)}
-                      placeholder="Type their name"
-                      className="mt-2 w-full rounded-xl border-2 border-border bg-surface px-4 py-3 text-base text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                    />
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      We&apos;ll generate a QR code and link so they can join the crew and open the Beer Bomb match.
-                    </p>
-                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    We&apos;ll generate a QR code and link so they can join the crew and pick their own name when they open it.
+                  </p>
                 )}
               </div>
             )}
