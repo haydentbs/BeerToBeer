@@ -1,6 +1,6 @@
 {
-  "name": "BeerScore",
-  "short_name": "BeerScore",
+  "name": "SettleUp",
+  "short_name": "SettleUp",
   "description": "The betting app where the stakes are real drinks",
   "start_url": "/",
   "display": "standalone",

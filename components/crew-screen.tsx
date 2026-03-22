@@ -777,8 +777,8 @@ function InviteModal({
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'Join my BeerScore crew',
-          text: `Join my crew on BeerScore! Use code ${inviteCode} or tap the link:`,
+          title: 'Join my SettleUp crew',
+          text: `Join my crew on SettleUp! Use code ${inviteCode} or tap the link:`,
           url: joinUrl,
         })
         return

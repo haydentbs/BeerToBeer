@@ -1,4 +1,4 @@
-// BeerScore App State Types and Mock Data
+// SettleUp App State Types and Mock Data
 
 export interface User {
   id: string

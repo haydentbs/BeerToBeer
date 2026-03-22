@@ -3,7 +3,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* BeerScore - Dark Neo-Brutalist Theme inspired by Forest App */
+/* SettleUp - Dark Neo-Brutalist Theme inspired by Forest App */
 :root {
   /* Dark warm background - night-out app */
   --background: oklch(0.12 0.01 60);
@@ -60,7 +60,7 @@
   --sidebar-border: oklch(0.25 0.02 60);
   --sidebar-ring: oklch(0.75 0.15 75);
   
-  /* Custom BeerScore tokens */
+  /* Custom SettleUp tokens */
   --win: oklch(0.75 0.15 75);
   --loss: oklch(0.55 0.18 25);
   --surface: oklch(0.18 0.01 60);
@@ -140,7 +140,7 @@
   }
 }
 
-/* Custom BeerScore Utilities */
+/* Custom SettleUp Utilities */
 @layer utilities {
   /* Safe area padding for mobile */
   .safe-area-top {

@@ -1422,7 +1422,7 @@ async function loadBackendState(
     type: notification.type,
     title: notification.title,
     message: notification.message,
-    crewName: crews.find((crew) => crew.id === notification.crew_id)?.name ?? 'BeerScore',
+    crewName: crews.find((crew) => crew.id === notification.crew_id)?.name ?? 'SettleUp',
     timestamp: asDate(notification.created_at),
     read: Boolean(notification.read_at),
     payload: notification.payload ?? {},
@@ -1451,7 +1451,7 @@ async function loadBackendState(
             guestIdentityId: membership.guest_identity_id,
             guestName: guestIdentity?.display_name ?? 'Guest',
             crewId: membership.crew_id,
-            crewName: (crewResult.data ?? []).find((crew: any) => crew.id === membership.crew_id)?.name ?? 'BeerScore',
+            crewName: (crewResult.data ?? []).find((crew: any) => crew.id === membership.crew_id)?.name ?? 'SettleUp',
             status: membership.status,
             joinedAt: asDate(membership.joined_at).toISOString(),
           }

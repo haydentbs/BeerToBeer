@@ -1,4 +1,4 @@
-# BeerScore
+# SettleUp
 
 *The betting app where the stakes are real drinks.*
 
@@ -10,9 +10,9 @@ Last Updated: March 20, 2026
 
 Your friend group already bets on everything. Who wins at pool, whether someone will order tequila, over/under on how many times Dave mentions his ex. Right now those bets live in your group chat, get forgotten, and never get settled.
 
-BeerScore makes them real. Create a bet, your crew wagers drinks, it resolves, and the app tracks exactly who owes who — down to the fraction of a pint. No fake currency. No play money. You lose, you buy the next round.
+SettleUp makes them real. Create a bet, your crew wagers drinks, it resolves, and the app tracks exactly who owes who — down to the fraction of a pint. No fake currency. No play money. You lose, you buy the next round.
 
-The app is built around Nights — a living session for each time your crew goes out. Every bet, every result, every drink owed gets grouped into that Night. The next morning, BeerScore generates a recap of everything that happened: who won, who lost, who owes what. That recap is the shareable moment. It’s the proof. It’s the bragging rights.
+The app is built around Nights — a living session for each time your crew goes out. Every bet, every result, every drink owed gets grouped into that Night. The next morning, SettleUp generates a recap of everything that happened: who won, who lost, who owes what. That recap is the shareable moment. It’s the proof. It’s the bragging rights.
 
 Over time, those Nights stack up into an all-time leaderboard, a running ledger between every pair of friends, and a permanent record of who actually backs up their talk.
 
@@ -20,7 +20,7 @@ Over time, those Nights stack up into an all-time leaderboard, a running ledger 
 
 ## Who It’s For
 
-Groups of friends who never stop competing. The crew that turns everything into a contest. College friends, roommates, bar regulars, rec league teammates, coworkers who go out on Fridays. 4-8 people who are already doing this — BeerScore just gives them structure, stakes, and receipts.
+Groups of friends who never stop competing. The crew that turns everything into a contest. College friends, roommates, bar regulars, rec league teammates, coworkers who go out on Fridays. 4-8 people who are already doing this — SettleUp just gives them structure, stakes, and receipts.
 
 These people are competitive, social, and status-driven. Winning matters to them. Losing stings. And neither should be forgotten.
 
@@ -30,7 +30,7 @@ These people are competitive, social, and status-driven. Winning matters to them
 
 ### Crews
 
-A Crew is your friend group inside BeerScore. Invite-only, typically 4-8 people. Everything lives within a Crew: bets, ledgers, leaderboards, Nights, history. You can be in multiple Crews, but each is its own self-contained world with its own rivalries and its own leaderboard.
+A Crew is your friend group inside SettleUp. Invite-only, typically 4-8 people. Everything lives within a Crew: bets, ledgers, leaderboards, Nights, history. You can be in multiple Crews, but each is its own self-contained world with its own rivalries and its own leaderboard.
 
 ### Nights
 
@@ -49,7 +49,7 @@ One-off bets outside of a Night are also supported. Not everything needs to be p
 
 ### Bets
 
-Every bet in BeerScore runs on a pari-mutuel system. Everyone wagers drinks into a shared pool. When the bet resolves, the winners split the entire pot proportionally based on how much they put in. The fewer people on the winning side, the bigger the payout. This means odds emerge naturally from how your friends bet — no algorithms, no house edge, just your crew’s collective read on the situation.
+Every bet in SettleUp runs on a pari-mutuel system. Everyone wagers drinks into a shared pool. When the bet resolves, the winners split the entire pot proportionally based on how much they put in. The fewer people on the winning side, the bigger the payout. This means odds emerge naturally from how your friends bet — no algorithms, no house edge, just your crew’s collective read on the situation.
 
 There are two types of bets:
 
@@ -69,7 +69,7 @@ This keeps the night moving. Most bets resolve in under a minute.
 
 ### The Ledger
 
-The Ledger is the heart of BeerScore. It tracks drink debt between every pair of people in the Crew, down to fractions. You might owe Sarah 0.3 drinks from last Tuesday and pick up another 0.7 tonight — that’s a full drink. Time to settle.
+The Ledger is the heart of SettleUp. It tracks drink debt between every pair of people in the Crew, down to fractions. You might owe Sarah 0.3 drinks from last Tuesday and pick up another 0.7 tonight — that’s a full drink. Time to settle.
 
 The Ledger has two layers:
 
@@ -154,7 +154,7 @@ Notifications are important for keeping the energy up during a Night:
 
 ### The Vibe
 
-Premium, dark, competitive, with warmth. BeerScore should feel like a sportsbook that lives at your local pub. Not corporate, not silly — confident and a little cocky. The competition is taken seriously. The prize just happens to be beer.
+Premium, dark, competitive, with warmth. SettleUp should feel like a sportsbook that lives at your local pub. Not corporate, not silly — confident and a little cocky. The competition is taken seriously. The prize just happens to be beer.
 
 Think the polish of a high-end sports betting interface, stripped down, warmer, and designed for 6 friends at a bar instead of millions of strangers online.
 
@@ -222,10 +222,10 @@ The hackathon build proves one thing: the core loop of creating bets, wagering d
 
 -----
 
-## What Makes BeerScore Work
+## What Makes SettleUp Work
 
 It’s not the betting mechanics — it’s that every bet is a social moment with your actual friends, the stakes are real enough to care about, and the ledger never forgets.
 
-The verbal bet at the bar gets forgotten. The group chat message gets buried. BeerScore is the permanent record. Three weeks from now, the app still knows Jake owes you a drink. That persistence is what turns a night-out gimmick into something people keep opening.
+The verbal bet at the bar gets forgotten. The group chat message gets buried. SettleUp is the permanent record. Three weeks from now, the app still knows Jake owes you a drink. That persistence is what turns a night-out gimmick into something people keep opening.
 
 Competition is everything. We’re just giving it a tab.

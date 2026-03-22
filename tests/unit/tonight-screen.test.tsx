@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { BeerScoreThemeProvider } from '@/components/theme-provider'
+import { SettleUpThemeProvider } from '@/components/theme-provider'
 import { TonightScreen } from '@/components/tonight-screen'
 import { CurrentUserProvider } from '@/lib/current-user'
 import type { Night, User } from '@/lib/store'
@@ -62,11 +62,11 @@ function renderTonightScreen({
   }
 
   render(
-    <BeerScoreThemeProvider>
+    <SettleUpThemeProvider>
       <CurrentUserProvider user={currentUser}>
         <ControlledTonightScreen />
       </CurrentUserProvider>
-    </BeerScoreThemeProvider>
+    </SettleUpThemeProvider>
   )
 
   return { handlers }

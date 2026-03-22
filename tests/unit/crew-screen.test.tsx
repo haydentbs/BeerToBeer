@@ -2,7 +2,7 @@ import type { ComponentProps } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { BeerScoreThemeProvider } from '@/components/theme-provider'
+import { SettleUpThemeProvider } from '@/components/theme-provider'
 import { CrewScreen } from '@/components/crew-screen'
 import type { Crew } from '@/lib/store'
 
@@ -79,7 +79,7 @@ function renderCrewScreen(props: Partial<ComponentProps<typeof CrewScreen>> = {}
   }
 
   render(
-    <BeerScoreThemeProvider>
+    <SettleUpThemeProvider>
       <CrewScreen
         crew={crew}
         currentUserId="profile-1"
@@ -87,7 +87,7 @@ function renderCrewScreen(props: Partial<ComponentProps<typeof CrewScreen>> = {}
         {...handlers}
         {...props}
       />
-    </BeerScoreThemeProvider>
+    </SettleUpThemeProvider>
   )
 
   return { crew, handlers }

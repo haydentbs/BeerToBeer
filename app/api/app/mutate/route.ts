@@ -13,7 +13,7 @@ export async function POST(request: Request) {
 
       if (payload.session) {
         response.cookies.set(
-          'beerscore_guest_session',
+          'settleup_guest_session',
           JSON.stringify(payload.session),
           {
             path: '/',

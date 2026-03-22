@@ -165,7 +165,7 @@ export default function JoinPage({ params }: { params: Promise<{ code: string }>
           </div>
         </div>
 
-        <h1 className="text-3xl text-foreground text-center mb-1">BeerScore</h1>
+        <h1 className="text-3xl text-foreground text-center mb-1">SettleUp</h1>
         <p className="text-muted-foreground text-center text-base mb-4 max-w-xs">
           You&apos;ve been invited to join a crew.
         </p>

@@ -6,5 +6,5 @@ test.skip(!useGoogleAuth, 'Google-backed auth is optional and disabled by defaul
 
 test('loads the app shell', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByText(/BeerScore/i)).toBeVisible()
+  await expect(page.getByText(/SettleUp/i)).toBeVisible()
 })

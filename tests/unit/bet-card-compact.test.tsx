@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { BetCardCompact } from '@/components/bet-card-compact'
-import { BeerScoreThemeProvider } from '@/components/theme-provider'
+import { SettleUpThemeProvider } from '@/components/theme-provider'
 import { CurrentUserProvider } from '@/lib/current-user'
 import type { Bet, User } from '@/lib/store'
 
@@ -43,11 +43,11 @@ describe('BetCardCompact', () => {
     }
 
     render(
-      <BeerScoreThemeProvider>
+      <SettleUpThemeProvider>
         <CurrentUserProvider user={currentUser}>
           <BetCardCompact bet={bet} onTap={onTap} />
         </CurrentUserProvider>
-      </BeerScoreThemeProvider>
+      </SettleUpThemeProvider>
     )
 
     expect(screen.getByText('Awaiting wagers')).toBeInTheDocument()

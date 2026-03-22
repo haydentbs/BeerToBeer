@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { BetDetailModal } from '@/components/bet-detail-modal'
-import { BeerScoreThemeProvider } from '@/components/theme-provider'
+import { SettleUpThemeProvider } from '@/components/theme-provider'
 import { CurrentUserProvider } from '@/lib/current-user'
 import type { Bet, User } from '@/lib/store'
 
@@ -26,7 +26,7 @@ const opponent: User = {
 
 function renderModal(bet: Bet) {
   return render(
-    <BeerScoreThemeProvider>
+    <SettleUpThemeProvider>
       <CurrentUserProvider user={currentUser}>
         <BetDetailModal
           bet={bet}
@@ -39,7 +39,7 @@ function renderModal(bet: Bet) {
           onCastDisputeVote={vi.fn()}
         />
       </CurrentUserProvider>
-    </BeerScoreThemeProvider>
+    </SettleUpThemeProvider>
   )
 }
 
@@ -91,7 +91,7 @@ describe('BetDetailModal', () => {
     const secondBet = makeDisputedBet('bet-2', 'Darts rematch')
 
     const { rerender } = render(
-      <BeerScoreThemeProvider>
+      <SettleUpThemeProvider>
         <CurrentUserProvider user={currentUser}>
           <BetDetailModal
             bet={firstBet}
@@ -104,7 +104,7 @@ describe('BetDetailModal', () => {
             onCastDisputeVote={onCastDisputeVote}
           />
         </CurrentUserProvider>
-      </BeerScoreThemeProvider>
+      </SettleUpThemeProvider>
     )
 
     await user.click(screen.getAllByRole('button', { name: /Alex Creator wins/i })[0])
@@ -113,7 +113,7 @@ describe('BetDetailModal', () => {
     expect(screen.getByText(/vote submitted/i)).toBeInTheDocument()
 
     rerender(
-      <BeerScoreThemeProvider>
+      <SettleUpThemeProvider>
         <CurrentUserProvider user={currentUser}>
           <BetDetailModal
             bet={secondBet}
@@ -126,7 +126,7 @@ describe('BetDetailModal', () => {
             onCastDisputeVote={onCastDisputeVote}
           />
         </CurrentUserProvider>
-      </BeerScoreThemeProvider>
+      </SettleUpThemeProvider>
     )
 
     expect(screen.queryByText(/vote submitted/i)).not.toBeInTheDocument()
@@ -145,7 +145,7 @@ describe('BetDetailModal', () => {
     expect(screen.getByText('Who won?')).toBeInTheDocument()
 
     rerender(
-      <BeerScoreThemeProvider>
+      <SettleUpThemeProvider>
         <CurrentUserProvider user={currentUser}>
           <BetDetailModal
             bet={secondBet}
@@ -158,7 +158,7 @@ describe('BetDetailModal', () => {
             onCastDisputeVote={vi.fn()}
           />
         </CurrentUserProvider>
-      </BeerScoreThemeProvider>
+      </SettleUpThemeProvider>
     )
 
     expect(screen.queryByText('Who won?')).not.toBeInTheDocument()

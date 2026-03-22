@@ -157,7 +157,7 @@ function mapNotificationRow(row: any, crewNameById: Map<string, string>): Notifi
     type: row.type,
     title: row.title,
     message: row.message,
-    crewName: crewNameById.get(row.crew_id) ?? 'BeerScore',
+    crewName: crewNameById.get(row.crew_id) ?? 'SettleUp',
     timestamp: asDate(row.created_at),
     read: Boolean(row.read_at),
     payload: row.payload ?? {},

@@ -1,4 +1,4 @@
-# BeerScore Hackathon Deck — Iteration Notes
+# SettleUp Hackathon Deck — Iteration Notes
 
 ## Current State (March 21, 2026)
 
@@ -8,7 +8,7 @@
 
 | # | Title | Content | Status |
 |---|-------|---------|--------|
-| 1 | Title | "The BeerScore" — movie poster style, team names, pun titles | Needs real names |
+| 1 | Title | "The SettleUp" — movie poster style, team names, pun titles | Needs real names |
 | 2 | The Problem | Three pain-point cards about broken bar promises | Done |
 | 3 | The Solution | Four pillars: real stakes, instant bets, ledger, receipts | Done |
 | 4 | How It Works | Four numbered steps: crew → night → bets → settle | Done |
@@ -42,7 +42,7 @@
 
 - **Add a "Results" slide after the night out** — real screenshots, actual bet examples, who won/lost, drinks owed. This is the "proof of concept" moment.
 - **Morning-after recap screenshot** — if the app generates a recap, screenshot it and add as a slide. This is the shareable moment.
-- **Before/after comparison** — show a messy group chat vs the clean BeerScore interface side by side.
+- **Before/after comparison** — show a messy group chat vs the clean SettleUp interface side by side.
 - **Live demo video** — if screenshots aren't enough, a short screen recording of placing a bet and seeing the ledger update.
 - **Audience participation** — consider ending with a live bet in the room using the app.
 - **More AI process detail** — if judges care about the technical AI story, expand slide 6 or 7 with specifics (e.g., "Claude Code wrote the pari-mutuel algorithm in one prompt", "Sub-agents built 3 features simultaneously").

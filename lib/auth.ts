@@ -1,7 +1,7 @@
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { type User } from '@/lib/store'
 
-const GUEST_SESSION_COOKIE = 'beerscore_guest_session'
+const GUEST_SESSION_COOKIE = 'settleup_guest_session'
 
 export interface AppSession {
   authUserId?: string

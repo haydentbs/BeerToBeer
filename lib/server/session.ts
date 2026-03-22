@@ -85,7 +85,7 @@ export async function resolveRequestActor(request: NextRequest): Promise<Request
     }
   }
 
-  const guestCookie = request.cookies.get('beerscore_guest_session')?.value
+  const guestCookie = request.cookies.get('settleup_guest_session')?.value
   if (guestCookie) {
     try {
       const session = JSON.parse(decodeURIComponent(guestCookie)) as AppSession

@@ -1,4 +1,4 @@
-// BeerScore Theming System
+// SettleUp Theming System
 // Two layers: App Mode (light/classic/dark) + Drink Theme (beer/cocktails/shots/tequila/wine/whiskey)
 
 export type AppMode = 'light' | 'classic' | 'dark'

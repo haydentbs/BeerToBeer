@@ -35,7 +35,7 @@ export function LandingPage({ onJoin, onCreate }: LandingPageProps) {
           </div>
         </div>
 
-        <h1 className="text-4xl text-foreground text-center mb-2">BeerScore</h1>
+        <h1 className="text-4xl text-foreground text-center mb-2">SettleUp</h1>
         <p className="text-muted-foreground text-center text-lg mb-8 max-w-xs">
           The betting app where the stakes are real drinks.
         </p>

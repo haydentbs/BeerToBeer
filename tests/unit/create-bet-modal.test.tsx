@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { CreateBetModal } from '@/components/create-bet-modal'
-import { BeerScoreThemeProvider } from '@/components/theme-provider'
+import { SettleUpThemeProvider } from '@/components/theme-provider'
 import { CurrentUserProvider } from '@/lib/current-user'
 import type { User } from '@/lib/store'
 
@@ -30,7 +30,7 @@ describe('CreateBetModal', () => {
     const onCreate = vi.fn()
 
     render(
-      <BeerScoreThemeProvider>
+      <SettleUpThemeProvider>
         <CurrentUserProvider user={currentUser}>
           <CreateBetModal
             isOpen
@@ -40,7 +40,7 @@ describe('CreateBetModal', () => {
             members={[currentUser, opponent]}
           />
         </CurrentUserProvider>
-      </BeerScoreThemeProvider>
+      </SettleUpThemeProvider>
     )
 
     await user.click(screen.getByRole('button', { name: /Challenge 1v1 with side bets/i }))

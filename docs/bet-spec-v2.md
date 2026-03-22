@@ -1,4 +1,4 @@
-# BeerScore — Bet System Spec v2
+# SettleUp — Bet System Spec v2
 
 Complete specification for all bet types, pari-mutuel logic, user flows, edge cases, and tournament system. Updated with audit findings and implementation decisions.
 

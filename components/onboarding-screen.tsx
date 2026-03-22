@@ -78,7 +78,7 @@ export function OnboardingScreen({
           </div>
         </div>
 
-        <h1 className="text-3xl text-foreground text-center mb-1">BeerScore</h1>
+        <h1 className="text-3xl text-foreground text-center mb-1">SettleUp</h1>
         <p className="text-muted-foreground text-center text-base mb-8 max-w-xs">
           Jump in as a guest with a cookie-backed session, or continue with Google for a saved account.
         </p>

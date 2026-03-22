@@ -1,7 +1,7 @@
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import type { AppSession } from '@/lib/auth'
 
-export const DEV_AUTH_COOKIE = 'beerscore_dev_auth_session'
+export const DEV_AUTH_COOKIE = 'settleup_dev_auth_session'
 
 export interface DevAuthIdentity {
   id: string
@@ -15,19 +15,19 @@ export const DEV_AUTH_IDENTITIES: DevAuthIdentity[] = [
   {
     id: '00000000-0000-4000-8000-000000000001',
     label: 'Alex Dev',
-    email: 'alex.dev@beerscore.local',
+    email: 'alex.dev@settleup.local',
     name: 'Alex Dev',
   },
   {
     id: '00000000-0000-4000-8000-000000000002',
     label: 'Riley Dev',
-    email: 'riley.dev@beerscore.local',
+    email: 'riley.dev@settleup.local',
     name: 'Riley Dev',
   },
   {
     id: '00000000-0000-4000-8000-000000000003',
     label: 'Jordan Dev',
-    email: 'jordan.dev@beerscore.local',
+    email: 'jordan.dev@settleup.local',
     name: 'Jordan Dev',
   },
 ]

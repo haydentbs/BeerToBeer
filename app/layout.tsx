@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Bungee, Lexend, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
-import { BeerScoreThemeProvider } from '@/components/theme-provider'
+import { SettleUpThemeProvider } from '@/components/theme-provider'
 import { AppStateProvider } from '@/lib/app-state'
 import './globals.css'
 
@@ -23,7 +23,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'BeerScore',
+  title: 'SettleUp',
   description: 'The betting app where the stakes are real drinks',
   generator: 'v0.app',
   manifest: '/manifest.json',
@@ -63,11 +63,11 @@ export default function RootLayout({
       <body
         className={`${bungee.variable} ${lexend.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        <BeerScoreThemeProvider>
+        <SettleUpThemeProvider>
           <AppStateProvider>
             {children}
           </AppStateProvider>
-        </BeerScoreThemeProvider>
+        </SettleUpThemeProvider>
         <Analytics />
       </body>
     </html>

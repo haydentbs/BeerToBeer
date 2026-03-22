@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { BeerScoreThemeProvider } from '@/components/theme-provider'
+import { SettleUpThemeProvider } from '@/components/theme-provider'
 import { ProfileModal } from '@/components/profile-modal'
 
 describe('ProfileModal', () => {
@@ -10,7 +10,7 @@ describe('ProfileModal', () => {
     const onClose = vi.fn()
 
     render(
-      <BeerScoreThemeProvider>
+      <SettleUpThemeProvider>
         <ProfileModal
           isOpen
           onClose={onClose}
@@ -32,7 +32,7 @@ describe('ProfileModal', () => {
           }}
           onSignOut={vi.fn()}
         />
-      </BeerScoreThemeProvider>
+      </SettleUpThemeProvider>
     )
 
     expect(screen.getByText('Alex Creator')).toBeInTheDocument()
@@ -49,7 +49,7 @@ describe('ProfileModal', () => {
 
   it('renders the guest upgrade and guest-claim actions when available', () => {
     render(
-      <BeerScoreThemeProvider>
+      <SettleUpThemeProvider>
         <ProfileModal
           isOpen
           onClose={vi.fn()}
@@ -68,7 +68,7 @@ describe('ProfileModal', () => {
           }}
           onFinishAccount={vi.fn()}
         />
-      </BeerScoreThemeProvider>
+      </SettleUpThemeProvider>
     )
 
     expect(screen.getByRole('button', { name: /create your account/i })).toBeInTheDocument()

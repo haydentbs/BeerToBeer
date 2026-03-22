@@ -27,15 +27,15 @@ const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 export function useTheme() {
   const ctx = useContext(ThemeContext)
-  if (!ctx) throw new Error('useTheme must be used within BeerScoreThemeProvider')
+  if (!ctx) throw new Error('useTheme must be used within SettleUpThemeProvider')
   return ctx
 }
 
-interface BeerScoreThemeProviderProps {
+interface SettleUpThemeProviderProps {
   children: React.ReactNode
 }
 
-export function BeerScoreThemeProvider({ children }: BeerScoreThemeProviderProps) {
+export function SettleUpThemeProvider({ children }: SettleUpThemeProviderProps) {
   const [mode, setModeState] = useState<AppMode>(DEFAULT_APP_MODE)
   const [activeDrinkTheme, setActiveDrinkThemeState] = useState<DrinkTheme>(DEFAULT_DRINK_THEME)
   const [themesDisabled, setThemesDisabledState] = useState(false)
@@ -43,8 +43,8 @@ export function BeerScoreThemeProvider({ children }: BeerScoreThemeProviderProps
   // Load preferences from localStorage on mount
   useEffect(() => {
     try {
-      const savedMode = localStorage.getItem('beerscore_mode') as AppMode | null
-      const savedDisabled = localStorage.getItem('beerscore_themes_disabled')
+      const savedMode = localStorage.getItem('settleup_mode') as AppMode | null
+      const savedDisabled = localStorage.getItem('settleup_themes_disabled')
       if (savedMode && ['light', 'classic', 'dark'].includes(savedMode)) {
         setModeState(savedMode)
       }
@@ -68,7 +68,7 @@ export function BeerScoreThemeProvider({ children }: BeerScoreThemeProviderProps
 
   const setMode = useCallback((m: AppMode) => {
     setModeState(m)
-    try { localStorage.setItem('beerscore_mode', m) } catch {}
+    try { localStorage.setItem('settleup_mode', m) } catch {}
   }, [])
 
   const setActiveDrinkTheme = useCallback((t: DrinkTheme) => {
@@ -77,7 +77,7 @@ export function BeerScoreThemeProvider({ children }: BeerScoreThemeProviderProps
 
   const setThemesDisabled = useCallback((d: boolean) => {
     setThemesDisabledState(d)
-    try { localStorage.setItem('beerscore_themes_disabled', String(d)) } catch {}
+    try { localStorage.setItem('settleup_themes_disabled', String(d)) } catch {}
   }, [])
 
   const drinkEmoji = themesDisabled

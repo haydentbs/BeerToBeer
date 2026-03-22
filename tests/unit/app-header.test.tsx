@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { AppHeader } from '@/components/app-header'
-import { BeerScoreThemeProvider } from '@/components/theme-provider'
+import { SettleUpThemeProvider } from '@/components/theme-provider'
 
 describe('AppHeader', () => {
   it('wires the guest finish-account action from the user menu', async () => {
@@ -10,7 +10,7 @@ describe('AppHeader', () => {
     const onFinishAccount = vi.fn()
 
     render(
-      <BeerScoreThemeProvider>
+      <SettleUpThemeProvider>
         <AppHeader
           crewName="The Regulars"
           netPosition={0}
@@ -19,7 +19,7 @@ describe('AppHeader', () => {
           onBack={vi.fn()}
           onFinishAccount={onFinishAccount}
         />
-      </BeerScoreThemeProvider>
+      </SettleUpThemeProvider>
     )
 
     await user.click(screen.getByRole('button', { name: 'GU' }))

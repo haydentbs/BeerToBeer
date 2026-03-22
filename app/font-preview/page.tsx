@@ -39,15 +39,15 @@ export const FONTS: FontPreviewEntry[] = [
     primaryFont: 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif',
     secondaryFont: 'Georgia, "Times New Roman", Times, serif',
   },
-  /* Matches BeerScore-Hackathon.pptx: Arial (labels), Impact (hero), Georgia italic (body) */
+  /* Matches SettleUp-Hackathon.pptx: Arial (labels), Impact (hero), Georgia italic (body) */
   {
     id: 'pptx-hackathon',
-    label: 'BeerScore-Hackathon.pptx (Arial / Impact / Georgia)',
+    label: 'SettleUp-Hackathon.pptx (Arial / Impact / Georgia)',
     kind: 'pptx-hackathon',
   },
 ]
 
-/** System stacks from the deck (slide 1: THE·Arial, BEERSCORE·Impact, taglines·Georgia italic; slide 2: Arial + Georgia). */
+/** System stacks from the deck (slide 1: THE·Arial, SETTLEUP·Impact, taglines·Georgia italic; slide 2: Arial + Georgia). */
 const PPTX_ARIAL = 'Arial, Helvetica, sans-serif'
 const PPTX_IMPACT = 'Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif'
 const PPTX_GEORGIA = 'Georgia, "Times New Roman", Times, serif'
@@ -106,7 +106,7 @@ function FontSample({ entry }: { entry: FontPreviewEntry }) {
         </div>
 
         <h1 className="mb-1 text-center text-3xl font-bold text-foreground" style={{ fontFamily: primaryFont }}>
-          BeerScore
+          SettleUp
         </h1>
         <p className="mb-8 max-w-xs text-center text-base text-muted-foreground" style={secondary}>
           Jump in as a guest with a cookie-backed session, or continue with Google for a saved account.
@@ -184,7 +184,7 @@ function PptxHackathonSample({ label }: { label: string }) {
           className="mb-2 text-center text-4xl font-bold uppercase leading-none tracking-tight text-foreground"
           style={{ fontFamily: PPTX_IMPACT }}
         >
-          BeerScore
+          SettleUp
         </h1>
 
         <p className="mb-8 max-w-xs text-center text-base text-muted-foreground" style={georgiaBody}>
@@ -241,7 +241,7 @@ function FontSampleInner({ label }: { label: string }) {
           </div>
         </div>
 
-        <h1 className="mb-1 text-center text-3xl font-bold text-foreground">BeerScore</h1>
+        <h1 className="mb-1 text-center text-3xl font-bold text-foreground">SettleUp</h1>
         <p className="mb-8 max-w-xs text-center text-base text-muted-foreground">
           Jump in as a guest with a cookie-backed session, or continue with Google for a saved account.
         </p>
