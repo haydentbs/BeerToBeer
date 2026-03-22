@@ -670,6 +670,7 @@ function buildMiniGameMatch(match: any, usersByMembershipId: Map<string, User>):
     gameKey: match.game_key,
     betId: match.bet_id ?? undefined,
     title: match.title,
+    externalInvite: Boolean(match.metadata?.externalInvite ?? match.metadata?.external_invite),
     status: match.status,
     challenger,
     opponent,

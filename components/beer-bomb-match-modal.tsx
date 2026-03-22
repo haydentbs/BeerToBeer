@@ -29,6 +29,7 @@ export interface BeerBombMatch {
   gameKey: 'beer_bomb'
   betId?: string | null
   title: string
+  externalInvite?: boolean
   isDevSolo?: boolean
   status: BeerBombMatchStatus
   proposedWager: number
@@ -373,6 +374,7 @@ export function BeerBombMatchModal({
     currentMembershipId && currentMembershipId === match.challenger.membershipId
       ? match.opponent
       : match.challenger
+  const isExternalInviteWaiting = Boolean(match.externalInvite && match.status === 'pending' && amChallenger)
 
   const playerSummaries = linkedBet?.options.map((option, index) => {
     const player = index === 0 ? match.challenger : match.opponent
@@ -525,6 +527,28 @@ export function BeerBombMatchModal({
             </span>
           </div>
 
+          {isExternalInviteWaiting ? (
+            <div className="mb-4 rounded-[1.75rem] border-3 border-border bg-card p-5 shadow-[0_16px_0_0_var(--border)]">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+                  <QrCode className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-muted-foreground">Waiting Room</p>
+                  <h3 className="text-xl font-bold text-card-foreground">Share the invite until someone joins</h3>
+                </div>
+              </div>
+              <p className="mb-4 text-sm text-muted-foreground">
+                This open Beer Bomb invite stays in share mode until someone opens the link and joins the crew. Once they accept, the live board will appear here automatically.
+              </p>
+              {crewInviteCode && (
+                <BeerBombSharePanel matchId={match.id} crewInviteCode={crewInviteCode} opponentName="someone else" />
+              )}
+              <div className="rounded-2xl border-2 border-border bg-surface px-4 py-3 text-sm text-muted-foreground">
+                We keep the board hidden for now so the first thing you see is the QR code and share link.
+              </div>
+            </div>
+          ) : (
           <div className="mb-4 relative overflow-hidden rounded-[1.75rem] border-3 border-border bg-[#2d1a10] shadow-[0_16px_0_0_var(--border)]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,214,153,0.2),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(0,0,0,0.2))]" />
             {resolvedBackground ? (
@@ -695,9 +719,10 @@ export function BeerBombMatchModal({
               </div>
             </div>
           </div>
+          )}
 
           {/* Share / Invite section — visible when challenger is waiting */}
-          {match.status === 'pending' && amChallenger && crewInviteCode && (
+          {match.status === 'pending' && amChallenger && crewInviteCode && !isExternalInviteWaiting && (
             <BeerBombSharePanel matchId={match.id} crewInviteCode={crewInviteCode} opponentName={match.opponent.name} />
           )}
 

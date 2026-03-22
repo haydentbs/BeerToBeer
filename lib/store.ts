@@ -77,6 +77,7 @@ export interface MiniGameMatch {
   gameKey: MiniGameKey
   betId?: string
   title: string
+  externalInvite?: boolean
   status: MiniGameMatchStatus
   challenger: User
   opponent: User
