@@ -52,6 +52,15 @@ export interface BeerBombMatch {
   declineReason?: string | null
 }
 
+export interface BeerBombTurnResult {
+  status: BeerBombMatchStatus
+  revealedSlotIndices: number[]
+  currentTurnMembershipId: string | null
+  winnerMembershipId: string | null
+  loserMembershipId: string | null
+  bombSlotIndex?: number
+}
+
 interface BeerBombMatchCardProps {
   match: BeerBombMatch
   linkedBet?: Bet | null
@@ -69,7 +78,7 @@ interface BeerBombMatchModalProps {
   onAccept: (matchId: string) => Promise<void> | void
   onDecline: (matchId: string) => Promise<void> | void
   onCancel: (matchId: string) => Promise<void> | void
-  onTakeTurn: (matchId: string, slotIndex: number) => Promise<void> | void
+  onTakeTurn: (matchId: string, slotIndex: number) => Promise<BeerBombTurnResult | void> | BeerBombTurnResult | void
   onWager: (betId: string, optionId: string, drinks: number) => Promise<void> | void
 }
 
@@ -337,6 +346,7 @@ export function BeerBombMatchModal({
   const currentUser = useCurrentUser()
   const [busyAction, setBusyAction] = useState<null | 'accept' | 'decline' | 'cancel' | 'turn' | 'wager'>(null)
   const [animatingSlotIndex, setAnimatingSlotIndex] = useState<number | null>(null)
+  const [pendingResolvedTurn, setPendingResolvedTurn] = useState<BeerBombTurnResult | null>(null)
   const [selectedOption, setSelectedOption] = useState<string | null>(null)
   const [wagerAmount, setWagerAmount] = useState(1)
 
@@ -348,6 +358,7 @@ export function BeerBombMatchModal({
   useEffect(() => {
     setAnimatingSlotIndex(null)
     setBusyAction(null)
+    setPendingResolvedTurn(null)
   }, [match?.id, match?.updatedAt?.getTime(), match?.status, match?.revealedSlotIndices.join(','), match?.currentTurnMembershipId])
 
   useEffect(() => {
@@ -357,13 +368,25 @@ export function BeerBombMatchModal({
 
   if (!isOpen || !match) return null
 
-  const phase = getMatchPhase(match, currentMembershipId)
+  const effectiveMatch =
+    pendingResolvedTurn == null
+      ? match
+      : {
+          ...match,
+          status: pendingResolvedTurn.status,
+          revealedSlotIndices: pendingResolvedTurn.revealedSlotIndices,
+          currentTurnMembershipId: pendingResolvedTurn.currentTurnMembershipId,
+          winnerMembershipId: pendingResolvedTurn.winnerMembershipId,
+          loserMembershipId: pendingResolvedTurn.loserMembershipId,
+          bombSlotIndex: pendingResolvedTurn.bombSlotIndex ?? match.bombSlotIndex,
+        }
+  const phase = getMatchPhase(effectiveMatch, currentMembershipId)
   const wager = match.agreedWager ?? match.proposedWager
   const isMyTurn = phase === 'your-turn'
   const isMyDecision = phase === 'your-decision'
-  const amChallenger = currentMembershipId && currentMembershipId === match.challenger.membershipId
-  const canActOnBoard = match.status === 'active' && isMyTurn && busyAction == null
-  const canCancel = match.status === 'pending' && amChallenger && busyAction == null
+  const amChallenger = currentMembershipId && currentMembershipId === effectiveMatch.challenger.membershipId
+  const canActOnBoard = effectiveMatch.status === 'active' && isMyTurn && busyAction == null
+  const canCancel = effectiveMatch.status === 'pending' && amChallenger && busyAction == null
   const canPlaceSideBet = linkedBet?.status === 'open' && busyAction == null
   const userWager = linkedBet ? getUserWagerForBet(linkedBet, currentUser.id) : null
   const userOutcome = linkedBet ? getMemberOutcomeForBet(linkedBet, currentUser.id) : null
@@ -371,10 +394,10 @@ export function BeerBombMatchModal({
     linkedBet && selectedOption ? projectBetPayout(linkedBet, selectedOption, wagerAmount, currentUser.id) : 0
 
   const otherPlayer =
-    currentMembershipId && currentMembershipId === match.challenger.membershipId
-      ? match.opponent
-      : match.challenger
-  const isExternalInviteWaiting = Boolean(match.externalInvite && match.status === 'pending' && amChallenger)
+    currentMembershipId && currentMembershipId === effectiveMatch.challenger.membershipId
+      ? effectiveMatch.opponent
+      : effectiveMatch.challenger
+  const isExternalInviteWaiting = Boolean(effectiveMatch.externalInvite && effectiveMatch.status === 'pending' && amChallenger)
 
   const playerSummaries = linkedBet?.options.map((option, index) => {
     const player = index === 0 ? match.challenger : match.opponent
@@ -390,11 +413,11 @@ export function BeerBombMatchModal({
       sideBettorCount: sideWagers.length,
     }
   }) ?? []
-  const gridColumns = getBeerBombGridColumns(match.boardSize)
+  const gridColumns = getBeerBombGridColumns(effectiveMatch.boardSize)
 
-  const boardSlots = Array.from({ length: match.boardSize }, (_, index) => {
-    const revealed = match.revealedSlotIndices.includes(index)
-    const isBomb = match.status === 'completed' && match.bombSlotIndex === index
+  const boardSlots = Array.from({ length: effectiveMatch.boardSize }, (_, index) => {
+    const revealed = effectiveMatch.revealedSlotIndices.includes(index)
+    const isBomb = effectiveMatch.status === 'completed' && effectiveMatch.bombSlotIndex === index
     const isAnimating = animatingSlotIndex === index && busyAction === 'turn'
     let state: 'idle' | 'draining' | 'safe-empty' | 'bomb-hit' = 'idle'
 
@@ -437,15 +460,19 @@ export function BeerBombMatchModal({
   }
 
   const handleSlotTap = async (index: number) => {
-    if (!canActOnBoard || match.revealedSlotIndices.includes(index)) {
+    if (!canActOnBoard || effectiveMatch.revealedSlotIndices.includes(index)) {
       return
     }
 
     setBusyAction('turn')
     setAnimatingSlotIndex(index)
+    setPendingResolvedTurn(null)
 
     try {
-      await onTakeTurn(match.id, index)
+      const nextTurn = await onTakeTurn(match.id, index)
+      if (nextTurn) {
+        setPendingResolvedTurn(nextTurn)
+      }
     } finally {
       setAnimatingSlotIndex(null)
       setBusyAction(null)
@@ -467,13 +494,13 @@ export function BeerBombMatchModal({
   }
 
   const resultLabel =
-    match.status === 'completed'
-      ? currentMembershipId && currentMembershipId === match.winnerMembershipId
+    effectiveMatch.status === 'completed'
+      ? currentMembershipId && currentMembershipId === effectiveMatch.winnerMembershipId
         ? 'You won the beer line'
-        : `${getMemberLabel(match, match.winnerMembershipId)} won the beer line`
-      : match.status === 'declined'
+        : `${getMemberLabel(effectiveMatch, effectiveMatch.winnerMembershipId)} won the beer line`
+      : effectiveMatch.status === 'declined'
       ? 'Challenge declined'
-      : match.status === 'cancelled'
+      : effectiveMatch.status === 'cancelled'
       ? 'Challenge cancelled'
       : phase === 'your-turn'
       ? 'Your turn'
@@ -570,11 +597,11 @@ export function BeerBombMatchModal({
                     ? 'Tap one beer. If the bomb is hiding there, the line explodes.'
                     : phase === 'your-decision'
                     ? 'Accept the challenge, then the beers get lined up and the turn order is set.'
-                    : match.status === 'completed'
+                    : effectiveMatch.status === 'completed'
                     ? 'The bomb has already been revealed.'
                     : `Waiting for ${otherPlayer.name} to move.`}
                 </div>
-                <MiniGameStatusBadge phase={phase} currentMembershipId={currentMembershipId} match={match} />
+                <MiniGameStatusBadge phase={phase} currentMembershipId={currentMembershipId} match={effectiveMatch} />
               </div>
 
               <div className="mt-10 flex justify-center">
@@ -590,12 +617,12 @@ export function BeerBombMatchModal({
                     return (
                       <button
                         key={slot.index}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => void handleSlotTap(index)}
+                        type="button"
+                        onClick={() => void handleSlotTap(slot.index)}
                         disabled={locked}
                         aria-label={`Beer ${index + 1}${revealed && slot.state === 'bomb-hit' ? ', bomb' : revealed ? ', drained' : ''}`}
                         className={cn(
-                          'relative aspect-[0.78] overflow-hidden rounded-xl border-2 border-white/15 bg-[#1a0e08]/65 px-1 pb-2 pt-1 text-left transition-all',
+                          'relative aspect-[0.78] overflow-hidden rounded-xl border-2 border-white/15 bg-[#1a0e08]/65 px-1 pb-2 pt-1 text-left transition-all touch-manipulation select-none',
                           locked ? 'cursor-default' : 'hover:-translate-y-1 hover:border-primary/60',
                           slot.state === 'draining' && 'scale-95 border-primary/80 shadow-[0_0_0_2px_rgba(255,195,84,0.25)]',
                           slot.state === 'bomb-hit' && 'border-loss/70 bg-loss/15',
@@ -604,7 +631,7 @@ export function BeerBombMatchModal({
                       >
                         <div
                           className={cn(
-                            'absolute inset-x-2 top-1 rounded-full transition-all duration-150',
+                            'absolute inset-x-2 top-1 rounded-full transition-all duration-75',
                             slot.state === 'bomb-hit'
                               ? 'h-8 bg-loss/70 blur-[2px]'
                               : slot.state === 'safe-empty'
@@ -618,7 +645,7 @@ export function BeerBombMatchModal({
                         <div className={cn('relative flex h-full flex-col items-center justify-end gap-1', shouldShake && 'animate-pulse')}>
                           <div
                             className={cn(
-                              'flex w-full flex-1 items-center justify-center transition-all duration-150',
+                              'flex w-full flex-1 items-center justify-center transition-all duration-75',
                               slot.state === 'draining' && 'translate-y-2 scale-90 opacity-70',
                               slot.state === 'safe-empty' && 'translate-y-1 opacity-65',
                               slot.state === 'bomb-hit' && 'scale-110'
@@ -659,13 +686,13 @@ export function BeerBombMatchModal({
 
               <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
                 <div className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs font-semibold text-white/80">
-                  {match.status === 'active'
-                    ? `${getMemberLabel(match, match.currentTurnMembershipId)} is up next`
-                    : match.status === 'pending'
-                    ? `Challenge is waiting on ${match.opponent.name}`
-                    : match.status === 'completed'
-                    ? `Winner: ${getMemberLabel(match, match.winnerMembershipId)}`
-                    : `Status: ${match.status}`}
+                  {effectiveMatch.status === 'active'
+                    ? `${getMemberLabel(effectiveMatch, effectiveMatch.currentTurnMembershipId)} is up next`
+                    : effectiveMatch.status === 'pending'
+                    ? `Challenge is waiting on ${effectiveMatch.opponent.name}`
+                    : effectiveMatch.status === 'completed'
+                    ? `Winner: ${getMemberLabel(effectiveMatch, effectiveMatch.winnerMembershipId)}`
+                    : `Status: ${effectiveMatch.status}`}
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -679,7 +706,7 @@ export function BeerBombMatchModal({
                     </button>
                   )}
 
-                  {match.status === 'pending' && (
+                  {effectiveMatch.status === 'pending' && (
                     <>
                       {isMyDecision && (
                         <>
@@ -707,7 +734,7 @@ export function BeerBombMatchModal({
                     </>
                   )}
 
-                  {match.status === 'completed' && (
+                  {effectiveMatch.status === 'completed' && (
                     <button
                       onClick={onClose}
                       className="rounded-xl border-2 border-border bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-brutal-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px]"
@@ -722,7 +749,7 @@ export function BeerBombMatchModal({
           )}
 
           {/* Share / Invite section — visible when challenger is waiting */}
-          {match.status === 'pending' && amChallenger && crewInviteCode && !isExternalInviteWaiting && (
+          {effectiveMatch.status === 'pending' && amChallenger && crewInviteCode && !isExternalInviteWaiting && (
             <BeerBombSharePanel matchId={match.id} crewInviteCode={crewInviteCode} opponentName={match.opponent.name} />
           )}
 
@@ -735,16 +762,16 @@ export function BeerBombMatchModal({
               <span
                 className={cn(
                   'rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wide',
-                  match.status === 'completed'
+                  effectiveMatch.status === 'completed'
                     ? 'border-win/40 bg-win/15 text-win'
-                    : match.status === 'pending'
+                    : effectiveMatch.status === 'pending'
                     ? 'border-primary/40 bg-primary/15 text-primary'
-                    : match.status === 'declined' || match.status === 'cancelled'
+                    : effectiveMatch.status === 'declined' || effectiveMatch.status === 'cancelled'
                     ? 'border-loss/40 bg-loss/15 text-loss'
                     : 'border-border bg-card text-card-foreground'
                 )}
               >
-                {match.status}
+                {effectiveMatch.status}
               </span>
             </div>
             <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
@@ -753,11 +780,11 @@ export function BeerBombMatchModal({
               <span>{match.opponent.name}</span>
               <span>•</span>
               <span>
-                {match.status === 'active'
+                {effectiveMatch.status === 'active'
                   ? isMyTurn
                     ? 'Your move'
                     : `Waiting on ${otherPlayer.name}`
-                  : match.status === 'pending'
+                  : effectiveMatch.status === 'pending'
                   ? isMyDecision
                     ? 'You can accept or decline'
                     : 'Waiting for acceptance'

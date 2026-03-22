@@ -8,6 +8,7 @@ import { PendingInviteBanners } from './pending-invite-banners'
 import {
   BeerBombMatchCard,
   BeerBombMatchModal,
+  type BeerBombTurnResult,
   type BeerBombMatch,
 } from './beer-bomb-match-modal'
 import { useTheme } from './theme-provider'
@@ -68,7 +69,7 @@ interface TonightScreenProps {
   onBeerBombAccept: (matchId: string) => Promise<void> | void
   onBeerBombDecline: (matchId: string) => Promise<void> | void
   onBeerBombCancel: (matchId: string) => Promise<void> | void
-  onBeerBombTurn: (matchId: string, slotIndex: number) => Promise<void> | void
+  onBeerBombTurn: (matchId: string, slotIndex: number) => Promise<BeerBombTurnResult | void> | BeerBombTurnResult | void
   onProposeResult?: (betId: string, optionId: string) => void
   onConfirmResult?: (betId: string) => void
   onDisputeResult?: (betId: string) => void
@@ -147,7 +148,7 @@ export function TonightScreen({
       const membershipId = currentUser.membershipId ?? currentUser.id
       const nextUpdatedAt = new Date()
 
-      setDevSoloBeerBombMatch({
+      const nextMatch: BeerBombMatch = {
         ...activeMatch,
         revealedSlotIndices: [...activeMatch.revealedSlotIndices, slotIndex],
         status: hitBomb ? 'completed' : 'active',
@@ -156,11 +157,19 @@ export function TonightScreen({
         loserMembershipId: hitBomb ? membershipId : null,
         completedAt: hitBomb ? nextUpdatedAt : null,
         updatedAt: nextUpdatedAt,
-      })
-      return
+      }
+      setDevSoloBeerBombMatch(nextMatch)
+      return {
+        status: nextMatch.status,
+        revealedSlotIndices: nextMatch.revealedSlotIndices,
+        currentTurnMembershipId: nextMatch.currentTurnMembershipId,
+        winnerMembershipId: nextMatch.winnerMembershipId,
+        loserMembershipId: nextMatch.loserMembershipId,
+        bombSlotIndex: nextMatch.bombSlotIndex,
+      }
     }
 
-    await onBeerBombTurn(matchId, slotIndex)
+    return await onBeerBombTurn(matchId, slotIndex)
   }
 
   return (

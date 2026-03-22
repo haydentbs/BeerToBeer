@@ -43,6 +43,7 @@ import {
   type Notification,
 } from '@/lib/store'
 import { useTheme } from '@/components/theme-provider'
+import type { BeerBombMatch, BeerBombTurnResult } from '@/components/beer-bomb-match-modal'
 import type { DrinkTheme } from '@/lib/themes'
 import {
   cancelMiniGameChallenge,
@@ -158,7 +159,7 @@ export interface AppStateValue {
   handleBeerBombAccept: (matchId: string) => void
   handleBeerBombDecline: (matchId: string) => void
   handleBeerBombCancel: (matchId: string) => void
-  handleBeerBombTurn: (matchId: string, slotIndex: number) => Promise<void>
+  handleBeerBombTurn: (matchId: string, slotIndex: number) => Promise<BeerBombTurnResult | void>
   handleClaimMiniGameInvite: (matchId: string, crewId: string) => Promise<boolean>
 
   // Modal state
@@ -1477,6 +1478,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     const payload = await takeMiniGameTurn({ crewId: activeCrewId, matchId, slotIndex })
     applyCommandPayload(payload)
     broadcastMatchUpdate(matchId, payload)
+    const updatedMatch = payload.changed?.snapshot?.crew?.currentNight?.miniGameMatches?.find((m: any) => m.id === matchId) as BeerBombMatch | undefined
+    if (!updatedMatch) return
+    return {
+      status: updatedMatch.status,
+      revealedSlotIndices: updatedMatch.revealedSlotIndices,
+      currentTurnMembershipId: updatedMatch.currentTurnMembershipId,
+      winnerMembershipId: updatedMatch.winnerMembershipId,
+      loserMembershipId: updatedMatch.loserMembershipId,
+      bombSlotIndex: updatedMatch.bombSlotIndex,
+    }
   }
 
   const handleSettle = (_entry: unknown) => {
