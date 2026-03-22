@@ -218,7 +218,7 @@ export interface AppStateValue {
   setMutationError: (error: string | null) => void
 
   // Settle
-  handleSettle: (entry: unknown) => void
+  handleSettle: (entry: LedgerEntry, drinks: number) => void
 
   // Dev
   showDevBattleSandbox: boolean
@@ -1510,8 +1510,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const handleSettle = (_entry: unknown) => {
-    // Settlement confirmation UI is planned — placeholder
+  const handleSettle = (entry: LedgerEntry, drinks: number) => {
+    if (!activeCrewId) return
+
+    const fromMembershipId = getCrewMemberMembershipId(entry.fromUser)
+    const toMembershipId = getCrewMemberMembershipId(entry.toUser)
+
+    if (!fromMembershipId || !toMembershipId) return
+
+    void runMutation(async () => {
+      const payload = await mutateApp('recordSettlement', {
+        crewId: activeCrewId,
+        nightId: activeCrew?.currentNight?.id ?? null,
+        fromMembershipId,
+        toMembershipId,
+        drinks,
+      })
+      applyCommandPayload(payload)
+    }, 'Could not record the settlement.')
   }
 
   // -------------------------------------------------------------------------

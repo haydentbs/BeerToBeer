@@ -1,68 +1,161 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { ArrowRight, Check, Clock } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ArrowRight, Check, Clock, Minus, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatDrinks, type LedgerEntry, type User } from '@/lib/store'
 import { useCurrentUser } from '@/lib/current-user'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 
 interface LedgerScreenProps {
   tonightLedger: LedgerEntry[]
   allTimeLedger: LedgerEntry[]
-  onSettle: (entry: LedgerEntry) => void
+  onSettle: (entry: LedgerEntry, drinks: number) => void
+}
+
+interface RelationshipEntry {
+  user: User
+  entry: LedgerEntry
+  balance: number
+  settled: number
+  direction: 'owed' | 'owing'
+}
+
+function roundToHalf(value: number) {
+  return Math.round(value * 2) / 2
 }
 
 export function LedgerScreen({ tonightLedger, allTimeLedger, onSettle }: LedgerScreenProps) {
   const currentUser = useCurrentUser()
   const [view, setView] = useState<'tonight' | 'alltime'>('tonight')
   const ledger = view === 'tonight' ? tonightLedger : allTimeLedger
+  const [settlementTarget, setSettlementTarget] = useState<RelationshipEntry | null>(null)
+  const [settlementAmount, setSettlementAmount] = useState(1)
 
-  // Calculate net position
-  const calculateNet = (entries: LedgerEntry[]) => {
-    let owed = 0 // drinks owed TO you
-    let owing = 0 // drinks you OWE
-    
-    entries.forEach(entry => {
-      const outstanding = entry.drinks - entry.settled
-      if (entry.toUser.id === currentUser.id) {
-        owed += outstanding
-      }
-      if (entry.fromUser.id === currentUser.id) {
-        owing += outstanding
-      }
-    })
-    
-    return { owed, owing, net: owed - owing }
-  }
+  const relationships = useMemo(() => {
+    const buckets = new Map<string, {
+      user: User
+      incomingDrinks: number
+      incomingSettled: number
+      outgoingDrinks: number
+      outgoingSettled: number
+    }>()
 
-  const { owed, owing, net } = useMemo(() => calculateNet(ledger), [ledger, currentUser.id])
-
-  // Group by relationship
-  const getRelationships = (entries: LedgerEntry[]) => {
-    const relationships: Record<string, { user: User, balance: number, settled: number, direction: 'owed' | 'owing' }> = {}
-
-    entries.forEach(entry => {
-      const outstanding = entry.drinks - entry.settled
+    ledger.forEach((entry) => {
       if (entry.toUser.id === currentUser.id) {
         const key = entry.fromUser.id
-        if (!relationships[key]) {
-          relationships[key] = { user: entry.fromUser, balance: 0, settled: entry.settled, direction: 'owed' }
+        const bucket = buckets.get(key) ?? {
+          user: entry.fromUser,
+          incomingDrinks: 0,
+          incomingSettled: 0,
+          outgoingDrinks: 0,
+          outgoingSettled: 0,
         }
-        relationships[key].balance += outstanding
+        bucket.incomingDrinks += entry.drinks
+        bucket.incomingSettled += entry.settled
+        buckets.set(key, bucket)
       }
+
       if (entry.fromUser.id === currentUser.id) {
         const key = entry.toUser.id
-        if (!relationships[key]) {
-          relationships[key] = { user: entry.toUser, balance: 0, settled: entry.settled, direction: 'owing' }
+        const bucket = buckets.get(key) ?? {
+          user: entry.toUser,
+          incomingDrinks: 0,
+          incomingSettled: 0,
+          outgoingDrinks: 0,
+          outgoingSettled: 0,
         }
-        relationships[key].balance -= outstanding
+        bucket.outgoingDrinks += entry.drinks
+        bucket.outgoingSettled += entry.settled
+        buckets.set(key, bucket)
       }
     })
 
-    return Object.values(relationships).filter(r => Math.abs(r.balance) > 0.01)
+    return [...buckets.values()]
+      .map((bucket) => {
+        const incomingOutstanding = Math.max(0, bucket.incomingDrinks - bucket.incomingSettled)
+        const outgoingOutstanding = Math.max(0, bucket.outgoingDrinks - bucket.outgoingSettled)
+        const balance = incomingOutstanding - outgoingOutstanding
+
+        if (balance > 0) {
+          return {
+            user: bucket.user,
+            entry: {
+              fromUser: bucket.user,
+              toUser: currentUser,
+              drinks: bucket.incomingDrinks,
+              settled: bucket.incomingSettled,
+            },
+            balance,
+            settled: bucket.incomingSettled,
+            direction: 'owed' as const,
+          }
+        }
+
+        if (balance < 0) {
+          return {
+            user: bucket.user,
+            entry: {
+              fromUser: currentUser,
+              toUser: bucket.user,
+              drinks: bucket.outgoingDrinks,
+              settled: bucket.outgoingSettled,
+            },
+            balance,
+            settled: bucket.outgoingSettled,
+            direction: 'owing' as const,
+          }
+        }
+
+        return null
+      })
+      .filter((entry): entry is RelationshipEntry => Boolean(entry))
+  }, [ledger, currentUser])
+
+  const { owed, owing, net } = useMemo(() => {
+    const owedTotal = relationships.filter((entry) => entry.balance > 0).reduce((sum, entry) => sum + entry.balance, 0)
+    const owingTotal = relationships.filter((entry) => entry.balance < 0).reduce((sum, entry) => sum + Math.abs(entry.balance), 0)
+
+    return {
+      owed: owedTotal,
+      owing: owingTotal,
+      net: owedTotal - owingTotal,
+    }
+  }, [relationships])
+
+  const openSettlementDialog = (relationship: RelationshipEntry) => {
+    const outstanding = Math.max(0, relationship.balance)
+    setSettlementTarget(relationship)
+    setSettlementAmount(outstanding > 0 ? Math.min(roundToHalf(outstanding), outstanding) : 0.5)
   }
 
-  const relationships = useMemo(() => getRelationships(ledger), [ledger, currentUser.id])
+  const closeSettlementDialog = () => {
+    setSettlementTarget(null)
+    setSettlementAmount(1)
+  }
+
+  const handleSettlementAmountChange = (nextValue: number, outstanding: number) => {
+    const normalized = Number.isFinite(nextValue) ? nextValue : 0.5
+    const clamped = Math.min(outstanding, Math.max(0.5, roundToHalf(normalized)))
+    setSettlementAmount(clamped)
+  }
+
+  const confirmSettlement = () => {
+    if (!settlementTarget) return
+    onSettle(settlementTarget.entry, settlementAmount)
+    closeSettlementDialog()
+  }
+
+  const settlementLimit = settlementTarget ? settlementTarget.balance : 0.5
 
   return (
     <div className="pb-24 px-4 space-y-6">
@@ -122,6 +215,7 @@ export function LedgerScreen({ tonightLedger, allTimeLedger, onSettle }: LedgerS
         <div className="space-y-3">
           {relationships.map((rel) => {
             const isPositive = rel.balance > 0
+            const outstanding = Math.max(0, rel.balance)
             return (
               <div 
                 key={rel.user.id}
@@ -163,18 +257,17 @@ export function LedgerScreen({ tonightLedger, allTimeLedger, onSettle }: LedgerS
                   </div>
                 </div>
 
-                {/* Settle Button - only show if balance >= 1 */}
-                {Math.abs(rel.balance) >= 1 && (
+                {/* Settle Button - only show for positive balances that are large enough to settle */}
+                {isPositive && outstanding >= 0.5 && (
                   <button
+                    onClick={() => openSettlementDialog(rel)}
                     className={cn(
                       'w-full mt-3 py-2 rounded-lg border-2 font-semibold text-sm flex items-center justify-center gap-2 transition-all',
-                      isPositive 
-                        ? 'border-win text-win hover:bg-win/10'
-                        : 'border-loss text-loss hover:bg-loss/10'
+                      'border-win text-win hover:bg-win/10'
                     )}
                   >
                     <Check className="h-4 w-4" />
-                    {isPositive ? 'Confirm drink received' : 'Mark as settled'}
+                    Record settlement
                   </button>
                 )}
 
@@ -182,7 +275,7 @@ export function LedgerScreen({ tonightLedger, allTimeLedger, onSettle }: LedgerS
                 {rel.settled > 0 && (
                   <div className="flex items-center gap-1.5 mt-3 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" />
-                    <span>{rel.settled} already settled</span>
+                    <span>{formatDrinks(rel.settled)} already settled</span>
                   </div>
                 )}
               </div>
@@ -196,6 +289,85 @@ export function LedgerScreen({ tonightLedger, allTimeLedger, onSettle }: LedgerS
           </div>
         )}
       </div>
+
+      <Dialog open={settlementTarget !== null} onOpenChange={(open) => !open && closeSettlementDialog()}>
+        <DialogContent className="bg-card border-3 border-border rounded-2xl shadow-brutal sm:max-w-md">
+          {settlementTarget && (
+            <>
+              <DialogHeader className="text-left">
+                <DialogTitle className="text-card-foreground">Settle tab</DialogTitle>
+                <DialogDescription>
+                  Record how many drinks {settlementTarget.user.name} actually handed over.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4">
+                <div className="rounded-xl border-2 border-border bg-surface p-4">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Outstanding</span>
+                    <span className="font-bold text-win">{formatDrinks(Math.max(0, settlementTarget.balance))} drinks</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Already settled</span>
+                    <span className="font-semibold text-card-foreground">{formatDrinks(settlementTarget.settled)} drinks</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="settlement-amount" className="text-sm font-semibold text-card-foreground">
+                    Drinks settled
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleSettlementAmountChange(settlementAmount - 0.5, settlementLimit)}
+                      disabled={settlementAmount <= 0.5}
+                      aria-label="Decrease settlement amount"
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    <Input
+                      id="settlement-amount"
+                      type="number"
+                      min="0.5"
+                      max={settlementLimit}
+                      step="0.5"
+                      value={settlementAmount}
+                      onChange={(event) => handleSettlementAmountChange(Number(event.target.value), settlementLimit)}
+                      className="text-center font-bold"
+                      aria-label="Settlement amount"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleSettlementAmountChange(settlementAmount + 0.5, settlementLimit)}
+                      disabled={settlementAmount >= settlementLimit}
+                      aria-label="Increase settlement amount"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Use half-drink steps so the ledger stays precise.
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={closeSettlementDialog}>
+                  Cancel
+                </Button>
+                <Button type="button" onClick={confirmSettlement}>
+                  Confirm settlement
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

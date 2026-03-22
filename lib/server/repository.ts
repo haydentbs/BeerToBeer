@@ -4474,16 +4474,68 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
     case 'recordSettlement': {
       const actorMembership = await requireActorMembership(actor, payload.crewId)
       const drinks = Number(payload.drinks)
+      const fromMembershipId = payload.fromMembershipId ?? actorMembership.id
+      const toMembershipId = payload.toMembershipId
+
       if (!Number.isFinite(drinks) || drinks <= 0) {
         throw new Error('Settlement amount must be greater than zero.')
+      }
+
+      if (!toMembershipId) {
+        throw new Error('A settlement recipient is required.')
+      }
+
+      if (fromMembershipId === toMembershipId) {
+        throw new Error('A settlement must be between two different crew members.')
+      }
+
+      const { data: settlementMembers, error: settlementMembersError } = await supabase
+        .from('crew_memberships')
+        .select('id, status')
+        .eq('crew_id', payload.crewId)
+        .in('id', [fromMembershipId, toMembershipId])
+
+      if (settlementMembersError) throw settlementMembersError
+
+      const activeSettlementMembers = settlementMembers ?? []
+      if (activeSettlementMembers.length !== 2 || activeSettlementMembers.some((member: any) => member.status !== 'active')) {
+        throw new Error('That settlement must be between two active crew members.')
+      }
+
+      const { data: ledgerRows, error: ledgerRowsError } = await supabase
+        .from('ledger_events')
+        .select('from_membership_id, to_membership_id, event_type, drinks')
+        .eq('crew_id', payload.crewId)
+
+      if (ledgerRowsError) throw ledgerRowsError
+
+      const outstanding = (ledgerRows ?? []).reduce((sum: number, row: any) => {
+        const amount = Number(row.drinks)
+        if (!Number.isFinite(amount)) {
+          return sum
+        }
+
+        if (row.from_membership_id === fromMembershipId && row.to_membership_id === toMembershipId) {
+          return row.event_type === 'manual_settlement' ? sum - amount : sum + amount
+        }
+
+        if (row.from_membership_id === toMembershipId && row.to_membership_id === fromMembershipId) {
+          return row.event_type === 'manual_settlement' ? sum + amount : sum - amount
+        }
+
+        return sum
+      }, 0)
+
+      if (drinks - outstanding > 0.0001) {
+        throw new Error('Settlement amount cannot exceed the balance that is still owed.')
       }
 
       await supabase.from('ledger_events').insert({
         crew_id: payload.crewId,
         night_id: payload.nightId ?? null,
         bet_id: payload.betId ?? null,
-        from_membership_id: payload.fromMembershipId ?? actorMembership.id,
-        to_membership_id: payload.toMembershipId,
+        from_membership_id: fromMembershipId,
+        to_membership_id: toMembershipId,
         event_type: 'manual_settlement',
         drinks,
         metadata: payload.metadata ?? {},
@@ -4491,7 +4543,8 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
       await recordAuditLog(payload.crewId, actorMembership.id, 'settlement_recorded', 'ledger_event', null, {
         drinks,
-        toMembershipId: payload.toMembershipId,
+        fromMembershipId,
+        toMembershipId,
       })
       break
     }
