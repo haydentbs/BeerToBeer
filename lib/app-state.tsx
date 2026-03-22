@@ -202,7 +202,7 @@ export function useAppState(): AppStateValue {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const PENDING_GUEST_CLAIM_KEY = 'beerscore_pending_guest_claim'
+const PENDING_GUEST_CLAIM_KEY = 'settleup_pending_guest_claim'
 
 function hasOAuthCallbackParams() {
   if (typeof window === 'undefined') return false
@@ -601,7 +601,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         if (!cancelled) {
-          setAuthNotice(error instanceof Error ? error.message : 'Could not load your BeerScore data.')
+          setAuthNotice(error instanceof Error ? error.message : 'Could not load your SettleUp data.')
         }
       } finally {
         if (!cancelled) setIsDataReady(true)
@@ -702,121 +702,84 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const hasActiveNight = Boolean(activeCrew?.currentNight)
   const activeCrewCursor = activeCrewId ? crewCursorById[activeCrewId] ?? null : null
 
+  // -------------------------------------------------------------------------
+  // Beer Bomb broadcast channel — instant match updates via WebSocket
+  // -------------------------------------------------------------------------
+  const beerBombChannelRef = useRef<ReturnType<SupabaseClient['channel']> | null>(null)
+
+  // Helper: merge match update fields into crews state
+  const applyBeerBombMatchUpdate = useCallback((matchUpdate: any) => {
+    if (!matchUpdate?.matchId) return
+    startTransition(() => {
+      setCrews((current) =>
+        current.map((crew) => {
+          if (!crew.currentNight) return crew
+          const matchIndex = (crew.currentNight.miniGameMatches ?? []).findIndex(
+            (m: any) => m.id === matchUpdate.matchId
+          )
+          if (matchIndex === -1) return crew
+
+          const existing = (crew.currentNight.miniGameMatches as any[])[matchIndex]
+          const updated = {
+            ...existing,
+            status: matchUpdate.status ?? existing.status,
+            revealedSlotIndices: matchUpdate.revealedSlotIndices ?? existing.revealedSlotIndices,
+            currentTurnMembershipId: matchUpdate.currentTurnMembershipId ?? null,
+            winnerMembershipId: matchUpdate.winnerMembershipId ?? existing.winnerMembershipId,
+            loserMembershipId: matchUpdate.loserMembershipId ?? existing.loserMembershipId,
+            agreedWager: matchUpdate.agreedWager != null ? Number(matchUpdate.agreedWager) : existing.agreedWager,
+            acceptedAt: matchUpdate.acceptedAt ? new Date(matchUpdate.acceptedAt) : existing.acceptedAt,
+            completedAt: matchUpdate.completedAt ? new Date(matchUpdate.completedAt) : existing.completedAt,
+            declinedAt: matchUpdate.declinedAt ? new Date(matchUpdate.declinedAt) : existing.declinedAt,
+            cancelledAt: matchUpdate.cancelledAt ? new Date(matchUpdate.cancelledAt) : existing.cancelledAt,
+            updatedAt: new Date(),
+            bombSlotIndex: matchUpdate.bombSlotIndex ?? existing.bombSlotIndex,
+          }
+
+          const nextMatches = [...crew.currentNight.miniGameMatches as any[]]
+          nextMatches[matchIndex] = updated
+          return {
+            ...crew,
+            currentNight: { ...crew.currentNight, miniGameMatches: nextMatches },
+          }
+        })
+      )
+    })
+  }, [])
+
+  // Subscribe to broadcast channel for the selected beer bomb match
   useEffect(() => {
-    if (
-      !session ||
-      session.isGuest ||
-      !supabaseConfigured ||
-      !activeCrewId ||
-      !activeCrew?.currentNight?.id ||
-      !isDataReady
-    ) {
+    const matchId = selectedBeerBombMatchId
+    if (!matchId || !supabaseConfigured) {
+      // Clean up any existing channel
+      if (beerBombChannelRef.current) {
+        const supabase = getSupabaseBrowserClient()
+        void supabase.removeChannel(beerBombChannelRef.current)
+        beerBombChannelRef.current = null
+      }
       return
     }
 
     const supabase = getSupabaseBrowserClient()
-    const activeNightId = activeCrew.currentNight.id
     let cancelled = false
-    let snapshotTimer: ReturnType<typeof setTimeout> | null = null
-
-    // Fast-path: apply match changes directly from the realtime payload
-    // instead of fetching the entire crew snapshot.
-    const applyMatchChange = (eventType: string, newRow: any) => {
-      if (cancelled || !newRow?.id) return
-
-      if (eventType === 'UPDATE') {
-        // Merge changed fields into the existing match in crews state
-        startTransition(() => {
-          setCrews((current) =>
-            current.map((crew) => {
-              if (crew.id !== activeCrewId || !crew.currentNight) return crew
-              const matchIndex = (crew.currentNight.miniGameMatches ?? []).findIndex(
-                (m: any) => m.id === newRow.id
-              )
-              if (matchIndex === -1) return crew
-
-              const existing = (crew.currentNight.miniGameMatches as any[])[matchIndex]
-              const updated = {
-                ...existing,
-                status: newRow.status ?? existing.status,
-                revealedSlotIndices: Array.isArray(newRow.revealed_slots)
-                  ? newRow.revealed_slots.map(Number)
-                  : existing.revealedSlotIndices,
-                currentTurnMembershipId: newRow.current_turn_membership_id ?? null,
-                winnerMembershipId: newRow.winner_membership_id ?? existing.winnerMembershipId,
-                loserMembershipId: newRow.loser_membership_id ?? existing.loserMembershipId,
-                agreedWager: newRow.agreed_wager != null ? Number(newRow.agreed_wager) : existing.agreedWager,
-                acceptedAt: newRow.accepted_at ? new Date(newRow.accepted_at) : existing.acceptedAt,
-                completedAt: newRow.completed_at ? new Date(newRow.completed_at) : existing.completedAt,
-                declinedAt: newRow.declined_at ? new Date(newRow.declined_at) : existing.declinedAt,
-                cancelledAt: newRow.cancelled_at ? new Date(newRow.cancelled_at) : existing.cancelledAt,
-                updatedAt: newRow.updated_at ? new Date(newRow.updated_at) : existing.updatedAt,
-                bombSlotIndex: newRow.status === 'completed' && newRow.hidden_slot_index != null
-                  ? Number(newRow.hidden_slot_index)
-                  : existing.bombSlotIndex,
-              }
-
-              const nextMatches = [...crew.currentNight.miniGameMatches as any[]]
-              nextMatches[matchIndex] = updated
-              return {
-                ...crew,
-                currentNight: { ...crew.currentNight, miniGameMatches: nextMatches },
-              }
-            })
-          )
-        })
-      } else {
-        // INSERT or DELETE — need fresh data, fall back to snapshot
-        requestSnapshot()
-      }
-    }
-
-    const requestSnapshot = () => {
-      if (cancelled || isRealtimeSnapshotInFlightRef.current) {
-        return
-      }
-
-      isRealtimeSnapshotInFlightRef.current = true
-      void fetchCrewSnapshotState(activeCrewId)
-        .then((snapshot) => {
-          if (!cancelled) {
-            startTransition(() => {
-              applyCrewSnapshotRef.current(snapshot)
-            })
-          }
-        })
-        .catch(() => {
-          // Best-effort; polling still backstops state convergence.
-        })
-        .finally(() => {
-          isRealtimeSnapshotInFlightRef.current = false
-        })
-    }
 
     const channel = supabase
-      .channel(`crew:${activeCrewId}:beer-bomb:${activeNightId}`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'mini_game_matches',
-        filter: `night_id=eq.${activeNightId}`,
-      }, (payload: any) => {
-        applyMatchChange(payload.eventType, payload.new)
+      .channel(`beer-bomb-live:${matchId}`, { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'match_update' }, ({ payload }: any) => {
+        if (!cancelled && payload) {
+          applyBeerBombMatchUpdate(payload)
+        }
       })
       .subscribe()
 
+    beerBombChannelRef.current = channel
+
     return () => {
       cancelled = true
-      if (snapshotTimer) clearTimeout(snapshotTimer)
+      beerBombChannelRef.current = null
       void supabase.removeChannel(channel)
     }
-  }, [
-    activeCrew?.currentNight?.id,
-    activeCrewId,
-    isDataReady,
-    session,
-    supabaseConfigured,
-  ])
+  }, [selectedBeerBombMatchId, supabaseConfigured, applyBeerBombMatchUpdate])
 
   useEffect(() => {
     if (!session || !activeCrewId || !isDataReady || activeCrewCursor == null) return
@@ -910,7 +873,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!session || isDataReady) return
     const timeoutId = window.setTimeout(() => {
-      setAuthNotice((c) => c ?? 'BeerScore is taking longer than usual to load your crews. Showing what we have so far.')
+      setAuthNotice((c) => c ?? 'SettleUp is taking longer than usual to load your crews. Showing what we have so far.')
       setIsDataReady(true)
     }, 5000)
     return () => window.clearTimeout(timeoutId)
@@ -1416,11 +1379,53 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  // Broadcast updated match state to the other player via WebSocket
+  const broadcastMatchUpdate = (matchId: string, payload: any) => {
+    const match = payload.changed?.snapshot?.crew?.currentNight?.miniGameMatches?.find(
+      (m: any) => m.id === matchId
+    )
+    if (!match) return
+
+    // Build a lightweight update payload from the snapshot match
+    const update = {
+      matchId: match.id,
+      status: match.status,
+      revealedSlotIndices: match.revealedSlotIndices ?? match.revealedSlots ?? [],
+      currentTurnMembershipId: match.currentTurnMembershipId ?? match.currentTurn?.membershipId ?? null,
+      winnerMembershipId: match.winnerMembershipId ?? match.winner?.membershipId ?? null,
+      loserMembershipId: match.loserMembershipId ?? match.loser?.membershipId ?? null,
+      agreedWager: match.agreedWager,
+      acceptedAt: match.acceptedAt,
+      completedAt: match.completedAt,
+      declinedAt: match.declinedAt,
+      cancelledAt: match.cancelledAt,
+      bombSlotIndex: match.bombSlotIndex,
+    }
+
+    // Broadcast to the match channel — the other player picks this up instantly
+    if (supabaseConfigured) {
+      try {
+        const supabase = getSupabaseBrowserClient()
+        const channel = supabase.channel(`beer-bomb-live:${matchId}`)
+        channel.subscribe((status: string) => {
+          if (status === 'SUBSCRIBED') {
+            void channel.send({ type: 'broadcast', event: 'match_update', payload: update })
+            // Unsubscribe after a short delay to clean up the ephemeral channel
+            setTimeout(() => { void supabase.removeChannel(channel) }, 500)
+          }
+        })
+      } catch {
+        // Best-effort; polling backstops
+      }
+    }
+  }
+
   const handleBeerBombAccept = (matchId: string) => {
     if (!activeCrewId) return
     void runMutation(async () => {
       const payload = await respondToMiniGameChallenge({ crewId: activeCrewId, matchId, accepted: true })
       applyCommandPayload(payload)
+      broadcastMatchUpdate(matchId, payload)
     })
   }
 
@@ -1429,6 +1434,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void runMutation(async () => {
       const payload = await respondToMiniGameChallenge({ crewId: activeCrewId, matchId, accepted: false })
       applyCommandPayload(payload)
+      broadcastMatchUpdate(matchId, payload)
     })
   }
 
@@ -1437,6 +1443,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void runMutation(async () => {
       const payload = await cancelMiniGameChallenge({ crewId: activeCrewId, matchId })
       applyCommandPayload(payload)
+      broadcastMatchUpdate(matchId, payload)
     })
   }
 
@@ -1444,6 +1451,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     if (!activeCrewId) return
     const payload = await takeMiniGameTurn({ crewId: activeCrewId, matchId, slotIndex })
     applyCommandPayload(payload)
+    broadcastMatchUpdate(matchId, payload)
   }
 
   const handleSettle = (_entry: unknown) => {
