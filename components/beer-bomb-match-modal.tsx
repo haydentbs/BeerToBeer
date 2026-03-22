@@ -696,6 +696,11 @@ export function BeerBombMatchModal({
             </div>
           </div>
 
+          {/* Share / Invite section — visible when challenger is waiting */}
+          {match.status === 'pending' && amChallenger && crewInviteCode && (
+            <BeerBombSharePanel matchId={match.id} crewInviteCode={crewInviteCode} opponentName={match.opponent.name} />
+          )}
+
           <div className="mb-4 rounded-2xl border-3 border-border bg-surface p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -868,6 +873,102 @@ export function BeerBombMatchModal({
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Share panel for inviting someone to the beer bomb match
+// ---------------------------------------------------------------------------
+
+function BeerBombSharePanel({
+  matchId,
+  crewInviteCode,
+  opponentName,
+}: {
+  matchId: string
+  crewInviteCode: string
+  opponentName: string
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [showQr, setShowQr] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
+
+  const playUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/play/${matchId}?crew=${crewInviteCode}`
+    : `/play/${matchId}?crew=${crewInviteCode}`
+
+  useEffect(() => {
+    if (!showQr || !canvasRef.current) return
+    QRCode.toCanvas(canvasRef.current, playUrl, {
+      width: 180,
+      margin: 2,
+      color: { dark: '#1a1614', light: '#ffffff' },
+    })
+  }, [showQr, playUrl])
+
+  const handleShare = async () => {
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Beer Bomb Challenge',
+          text: `You've been challenged to Beer Bomb! Tap to play:`,
+          url: playUrl,
+        })
+        return
+      } catch {
+        // User cancelled or share failed — fall through to copy
+      }
+    }
+    await navigator.clipboard.writeText(playUrl)
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 2000)
+  }
+
+  return (
+    <div className="mb-4 rounded-2xl border-2 border-primary/30 bg-primary/10 p-4">
+      <p className="text-xs font-bold uppercase tracking-wide text-primary mb-3">
+        Invite someone to play
+      </p>
+      <p className="text-sm text-muted-foreground mb-3">
+        Share this link to invite {opponentName} or anyone else to join and play.
+      </p>
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => void handleShare()}
+          className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-border bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-brutal-sm transition-all active:shadow-none active:translate-x-[1px] active:translate-y-[1px]"
+        >
+          {linkCopied ? (
+            <>
+              <Check className="h-4 w-4" />
+              Copied!
+            </>
+          ) : (
+            <>
+              <Share2 className="h-4 w-4" />
+              Share Link
+            </>
+          )}
+        </button>
+        <button
+          onClick={() => setShowQr((v) => !v)}
+          className={cn(
+            'flex items-center justify-center rounded-xl border-2 border-border px-3 py-2.5 text-sm font-bold transition-all',
+            showQr
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-card text-card-foreground hover:border-primary/50'
+          )}
+        >
+          <QrCode className="h-5 w-5" />
+        </button>
+      </div>
+
+      {showQr && (
+        <div className="mt-3 flex justify-center rounded-xl bg-white p-3">
+          <canvas ref={canvasRef} />
+        </div>
+      )}
     </div>
   )
 }

@@ -57,6 +57,7 @@ function createSoloBeerBombMatch(currentUser: ReturnType<typeof useCurrentUser>)
 
 interface TonightScreenProps {
   night: Night
+  crewInviteCode?: string
   selectedBetId: string | null
   selectedBeerBombMatchId: string | null
   onSelectBet: (betId: string | null) => void
@@ -77,6 +78,7 @@ interface TonightScreenProps {
 
 export function TonightScreen({
   night,
+  crewInviteCode,
   selectedBetId,
   selectedBeerBombMatchId,
   onSelectBet,
@@ -301,6 +303,7 @@ export function TonightScreen({
         linkedBet={selectedBeerBombLinkedBet}
         isOpen={!!liveSelectedBeerBombMatch}
         currentMembershipId={currentUser.membershipId ?? currentUser.id}
+        crewInviteCode={crewInviteCode}
         onClose={() => onSelectBeerBombMatch(null)}
         onAccept={onBeerBombAccept}
         onDecline={onBeerBombDecline}
