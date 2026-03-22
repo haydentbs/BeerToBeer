@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Bomb, HelpCircle, Lock, Minus, Plus, Swords, Trophy, X } from 'lucide-react'
 import { useTheme } from '@/components/theme-provider'
 import { cn } from '@/lib/utils'
-import type { BetSubtype, User } from '@/lib/store'
+import { BEER_BOMB_BOARD_SIZE, BEER_BOMB_BOARD_SIZE_OPTIONS, type BetSubtype, type User } from '@/lib/store'
 import { useCurrentUser } from '@/lib/current-user'
 
 interface CreateBetModalProps {
@@ -49,7 +49,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
   const [initialOptionIndex, setInitialOptionIndex] = useState(0)
   const [wager, setWager] = useState(1)
   const [closeTime, setCloseTime] = useState(2)
-  const [boardSize, setBoardSize] = useState(6)
+  const [boardSize, setBoardSize] = useState(BEER_BOMB_BOARD_SIZE)
 
   const resetForm = () => {
     setStep(1)
@@ -63,7 +63,7 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
     setInitialOptionIndex(0)
     setWager(1)
     setCloseTime(2)
-    setBoardSize(6)
+    setBoardSize(BEER_BOMB_BOARD_SIZE)
   }
 
   const handleCreate = () => {
@@ -523,26 +523,30 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
             {mode === 'beerBomb' && (
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Board size</label>
-                <div className="mt-2 flex items-center gap-2">
-                  {[
-                    { size: 4, label: '2\u00d72' },
-                    { size: 6, label: '2\u00d73' },
-                    { size: 9, label: '3\u00d73' },
-                    { size: 12, label: '3\u00d74' },
-                  ].map(({ size, label }) => (
-                    <button
-                      key={size}
-                      onClick={() => setBoardSize(size)}
-                      className={cn(
-                        'flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-all',
-                        boardSize === size
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border/60 bg-card text-foreground hover:border-primary/50'
-                      )}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {BEER_BOMB_BOARD_SIZE_OPTIONS.map((size) => {
+                    const label =
+                      size === 4 ? '2\u00d72'
+                      : size === 6 ? '2\u00d73'
+                      : size === 8 ? '2\u00d74'
+                      : size === 9 ? '3\u00d73'
+                      : '3\u00d74'
+
+                    return (
+                      <button
+                        key={size}
+                        onClick={() => setBoardSize(size)}
+                        className={cn(
+                          'rounded-lg border-2 py-2 text-sm font-semibold transition-all',
+                          boardSize === size
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border/60 bg-card text-card-foreground hover:border-primary/50'
+                        )}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
             )}

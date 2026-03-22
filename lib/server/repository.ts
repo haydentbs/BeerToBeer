@@ -3,6 +3,7 @@ import { buildGuestSession, type AppSession } from '@/lib/auth'
 import { getInitials } from '@/lib/utils'
 import {
   BEER_BOMB_BOARD_SIZE,
+  isValidBeerBombBoardSize,
   deriveLedgerEntriesFromBets,
   generateCrewCode,
   formatDrinks,
@@ -3568,8 +3569,8 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       if (!Number.isFinite(closeTime) || closeTime <= 0) {
         throw new Error('Challenge response time must be greater than zero.')
       }
-      if (!Number.isInteger(boardSize) || boardSize < 4 || boardSize > 12) {
-        throw new Error('Beer Bomb board size must be between 4 and 12 beers.')
+      if (!Number.isInteger(boardSize) || !isValidBeerBombBoardSize(boardSize)) {
+        throw new Error('Beer Bomb board size must be one of 4, 6, 8, 9, or 12 beers.')
       }
 
       const [nightResult, opponentResult] = await Promise.all([
@@ -3615,6 +3616,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
           opponent_membership_id: opponentMembershipId,
           proposed_wager: proposedWager,
           board_size: boardSize,
+          hidden_slot_index: Math.floor(Math.random() * boardSize),
           revealed_slots: [],
           respond_by_at: new Date(Date.now() + closeTime * 60_000).toISOString(),
         })
@@ -3945,11 +3947,15 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
       const proposedWager = Number(payload.proposedWager ?? payload.wager)
       const closeTime = Number(payload.closeTime ?? 5)
+      const boardSize = Number(payload.boardSize ?? BEER_BOMB_BOARD_SIZE)
       if (!isValidHalfDrinkAmount(proposedWager)) {
         throw new Error('Beer Bomb wagers must be in 0.5 drink increments and at most 5 drinks.')
       }
       if (!Number.isFinite(closeTime) || closeTime <= 0) {
         throw new Error('Challenge response time must be greater than zero.')
+      }
+      if (!Number.isInteger(boardSize) || !isValidBeerBombBoardSize(boardSize)) {
+        throw new Error('Beer Bomb board size must be one of 4, 6, 8, 9, or 12 beers.')
       }
 
       const externalOpponentName = typeof payload.externalOpponentName === 'string'
@@ -4030,8 +4036,8 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
           created_by_membership_id: actorMembership.id,
           opponent_membership_id: opponentMembership.id,
           proposed_wager: proposedWager,
-          board_size: BEER_BOMB_BOARD_SIZE,
-          hidden_slot_index: Math.floor(Math.random() * BEER_BOMB_BOARD_SIZE),
+          board_size: boardSize,
+          hidden_slot_index: Math.floor(Math.random() * boardSize),
           revealed_slots: [],
           respond_by_at: new Date(Date.now() + closeTime * 60_000).toISOString(),
           metadata: matchMetadata,
@@ -4044,6 +4050,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       await recordMiniGameMatchEvent(match.id, actorMembership.id, 'challenge_created', {
         gameKey: 'beer_bomb',
         proposedWager,
+        boardSize,
       })
 
       const challengerUser = buildUserFromMembership(actorMembership)
@@ -4052,6 +4059,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
       await recordAuditLog(payload.crewId, actorMembership.id, 'mini_game_challenge_created', 'mini_game_match', match.id, {
         gameKey: 'beer_bomb',
         proposedWager,
+        boardSize,
         opponentMembershipId: opponentMembership.id,
         externalInvite: Boolean(externalOpponentName),
       })

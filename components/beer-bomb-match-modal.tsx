@@ -193,7 +193,9 @@ function getMemberLabel(match: BeerBombMatch, membershipId: string | null) {
 }
 
 function getBeerBombGridColumns(boardSize: number) {
+  if (boardSize === 8) return 4
   if (boardSize <= 4) return 2
+  if (boardSize <= 6) return 3
   if (boardSize <= 9) return 3
   return 4
 }

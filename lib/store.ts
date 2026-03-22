@@ -760,6 +760,11 @@ export function deriveLedgerEntriesFromBets(bets: Bet[]): LedgerEntry[] {
 }
 
 export const BEER_BOMB_BOARD_SIZE = 8
+export const BEER_BOMB_BOARD_SIZE_OPTIONS = [4, 6, 8, 9, 12] as const
+
+export function isValidBeerBombBoardSize(value: number) {
+  return (BEER_BOMB_BOARD_SIZE_OPTIONS as readonly number[]).includes(value)
+}
 
 export function createBeerBombSlotStates(match: Pick<MiniGameMatch, 'boardSize' | 'revealedSlots' | 'status' | 'bombSlotIndex'>): BeerBombSlotState[] {
   const states: BeerBombSlotState[] = Array.from({ length: match.boardSize }, () => 'idle')
