@@ -817,8 +817,8 @@ export async function fetchCrewFeedState(actor: RequestActor, crewId: string, af
   }
 }
 
-export async function runGuestJoinCommand(name: string, crewCode: string): Promise<CommandResponse> {
-  const payload = await joinCrewAsGuest(name, crewCode, { mode: 'crew' })
+export async function runGuestJoinCommand(name: string, crewCode: string, options?: { matchId?: string }): Promise<CommandResponse> {
+  const payload = await joinCrewAsGuest(name, crewCode, { mode: 'crew', matchId: options?.matchId })
   if (!payload.session) {
     throw new Error('Guest session could not be created.')
   }

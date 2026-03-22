@@ -1476,7 +1476,7 @@ export async function loadAppState(actor: RequestActor, options?: AppBootstrapOp
 export async function joinCrewAsGuest(
   name: string,
   inviteCode: string,
-  options?: { mode?: AppBootstrapMode }
+  options?: { mode?: AppBootstrapMode; matchId?: string }
 ): Promise<AppMutationPayload> {
   const supabase = getServiceRoleClient()
   const cleanName = name.trim()
@@ -1498,6 +1498,13 @@ export async function joinCrewAsGuest(
 
   if (settings && settings.allow_guests === false) {
     throw new Error('Guests are disabled for this crew.')
+  }
+
+  if (options?.matchId) {
+    const invitePayload = await joinMiniGameInviteAsGuest(cleanName, crew, options.matchId, options.mode ?? 'full')
+    if (invitePayload) {
+      return { ...invitePayload, session: invitePayload.session }
+    }
   }
 
   const { data: guest, error: guestError } = await supabase
@@ -1564,6 +1571,70 @@ export async function joinCrewAsGuest(
       activeCrewId: crew.id,
     }
   )
+  return { ...payload, session }
+}
+
+async function joinMiniGameInviteAsGuest(
+  cleanName: string,
+  crew: { id: string; name: string; invite_code: string },
+  matchId: string,
+  mode: AppBootstrapMode
+) {
+  const supabase = getServiceRoleClient()
+  const { match, membershipRows } = await loadMiniGameMatchContext(matchId)
+  const isExternalInvite = Boolean(match.metadata?.externalInvite ?? match.metadata?.external_invite)
+
+  if (!isExternalInvite || match.crew_id !== crew.id || match.status !== 'pending') {
+    return null
+  }
+
+  const placeholderMembership = membershipRows.find((membership: any) => membership.id === match.opponent_membership_id)
+  const guestIdentity = unwrapRelation(placeholderMembership?.guest_identities)
+
+  if (!placeholderMembership || placeholderMembership.actor_type !== 'guest' || !guestIdentity) {
+    throw new Error('This Beer Bomb invite can no longer be claimed.')
+  }
+
+  const { error: updateGuestError } = await supabase
+    .from('guest_identities')
+    .update({
+      display_name: cleanName,
+      initials: getInitials(cleanName),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', guestIdentity.id)
+
+  if (updateGuestError) throw updateGuestError
+
+  await ensureNotificationPreference(placeholderMembership.id)
+  await ensureNightParticipant(match.night_id, placeholderMembership.id)
+
+  await recordAuditLog(crew.id, placeholderMembership.id, 'guest_joined', 'mini_game_match', match.id, {
+    inviteCode: normalizeInviteCode(crew.invite_code),
+    source: 'mini_game_external_invite',
+  })
+
+  await notifyCrewMembers(crew.id, {
+    type: 'member_joined',
+    title: `${cleanName} joined ${crew.name}`,
+    message: `${cleanName} joined from a Beer Bomb invite.`,
+    payload: { membershipId: placeholderMembership.id, matchId: match.id },
+    excludeMembershipId: placeholderMembership.id,
+  })
+
+  const session = buildGuestSession(cleanName)
+  session.user.id = guestIdentity.id
+  session.guestIdentityId = guestIdentity.id
+  session.membershipId = placeholderMembership.id
+
+  const payload = await loadAppState(
+    { kind: 'guest', session },
+    {
+      mode,
+      activeCrewId: crew.id,
+    }
+  )
+
   return { ...payload, session }
 }
 
@@ -3882,23 +3953,71 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
         throw new Error('Challenge response time must be greater than zero.')
       }
 
-      if (!payload.opponentMembershipId || payload.opponentMembershipId === actorMembership.id) {
-        throw new Error('Choose another active participant for the challenge.')
+      const externalOpponentName = typeof payload.externalOpponentName === 'string'
+        ? payload.externalOpponentName.trim()
+        : ''
+
+      let opponentMembership: any
+      let matchMetadata = payload.metadata ?? {}
+
+      if (externalOpponentName) {
+        const createdByProfile = actor.kind === 'authenticated'
+          ? await ensureProfile(actor.authUser)
+          : null
+
+        const { data: guestIdentity, error: guestIdentityError } = await supabase
+          .from('guest_identities')
+          .insert({
+            display_name: externalOpponentName,
+            initials: getInitials(externalOpponentName),
+            ...(createdByProfile ? { created_by_profile_id: createdByProfile.id } : {}),
+          })
+          .select(GUEST_IDENTITY_SELECT)
+          .single()
+
+        if (guestIdentityError) throw guestIdentityError
+
+        const { data: placeholderMembership, error: placeholderMembershipError } = await supabase
+          .from('crew_memberships')
+          .insert({
+            crew_id: payload.crewId,
+            actor_type: 'guest',
+            guest_identity_id: guestIdentity.id,
+            role: 'guest',
+            status: 'active',
+          })
+          .select('*, profiles(*), guest_identities(*)')
+          .single()
+
+        if (placeholderMembershipError) throw placeholderMembershipError
+
+        opponentMembership = placeholderMembership
+        matchMetadata = {
+          ...matchMetadata,
+          externalInvite: true,
+          externalOpponentName,
+          placeholderGuestIdentityId: guestIdentity.id,
+        }
+      } else {
+        if (!payload.opponentMembershipId || payload.opponentMembershipId === actorMembership.id) {
+          throw new Error('Choose another active participant for the challenge.')
+        }
+
+        const { data: existingOpponentMembership, error: opponentMembershipError } = await supabase
+          .from('crew_memberships')
+          .select('*, profiles(*), guest_identities(*)')
+          .eq('id', payload.opponentMembershipId)
+          .eq('crew_id', payload.crewId)
+          .single()
+
+        if (opponentMembershipError) throw opponentMembershipError
+        if (existingOpponentMembership.status !== 'active') {
+          throw new Error('Your opponent must be an active crew member.')
+        }
+
+        await requireActiveNightParticipant(payload.nightId, existingOpponentMembership.id)
+        opponentMembership = existingOpponentMembership
       }
-
-      const { data: opponentMembership, error: opponentMembershipError } = await supabase
-        .from('crew_memberships')
-        .select('*, profiles(*), guest_identities(*)')
-        .eq('id', payload.opponentMembershipId)
-        .eq('crew_id', payload.crewId)
-        .single()
-
-      if (opponentMembershipError) throw opponentMembershipError
-      if (opponentMembership.status !== 'active') {
-        throw new Error('Your opponent must be an active crew member.')
-      }
-
-      await requireActiveNightParticipant(payload.nightId, opponentMembership.id)
 
       const title = payload.title?.trim() || 'Beer Bomb'
       const { data: match, error: matchError } = await supabase
@@ -3916,7 +4035,7 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
           hidden_slot_index: Math.floor(Math.random() * BEER_BOMB_BOARD_SIZE),
           revealed_slots: [],
           respond_by_at: new Date(Date.now() + closeTime * 60_000).toISOString(),
-          metadata: payload.metadata ?? {},
+          metadata: matchMetadata,
         })
         .select('id')
         .single()
@@ -3935,22 +4054,113 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
         gameKey: 'beer_bomb',
         proposedWager,
         opponentMembershipId: opponentMembership.id,
+        externalInvite: Boolean(externalOpponentName),
       })
 
-      await notifyCrewMembers(payload.crewId, {
-        type: 'challenge',
-        title: `${challengerUser.name} challenged ${opponentUser.name}`,
-        message: `${title} for ${formatDrinks(proposedWager)} drinks.`,
-        payload: {
-          matchId: match.id,
-          gameKey: 'beer_bomb',
-          nightId: payload.nightId,
-          proposedWager,
-          status: 'pending',
-          targetMembershipId: opponentMembership.id,
-        },
-        membershipIds: [opponentMembership.id],
+      if (externalOpponentName) {
+        await notifyCrewMembers(payload.crewId, {
+          type: 'challenge',
+          title: `${challengerUser.name} opened a Beer Bomb invite`,
+          message: `${title} is ready to share for ${formatDrinks(proposedWager)} drinks.`,
+          payload: {
+            matchId: match.id,
+            gameKey: 'beer_bomb',
+            nightId: payload.nightId,
+            proposedWager,
+            status: 'pending',
+            externalInvite: true,
+          },
+          excludeMembershipId: actorMembership.id,
+        })
+      } else {
+        await notifyCrewMembers(payload.crewId, {
+          type: 'challenge',
+          title: `${challengerUser.name} challenged ${opponentUser.name}`,
+          message: `${title} for ${formatDrinks(proposedWager)} drinks.`,
+          payload: {
+            matchId: match.id,
+            gameKey: 'beer_bomb',
+            nightId: payload.nightId,
+            proposedWager,
+            status: 'pending',
+            targetMembershipId: opponentMembership.id,
+          },
+          membershipIds: [opponentMembership.id],
+        })
+      }
+      break
+    }
+
+    case 'claimMiniGameInvite': {
+      const { match } = await loadMiniGameMatchContext(payload.matchId)
+
+      if (match.crew_id !== payload.crewId) {
+        throw new Error('That challenge does not belong to this crew.')
+      }
+
+      const isExternalInvite = Boolean(match.metadata?.externalInvite ?? match.metadata?.external_invite)
+      if (!isExternalInvite) {
+        responseCrewId = match.crew_id
+        break
+      }
+
+      if (match.status !== 'pending') {
+        responseCrewId = match.crew_id
+        break
+      }
+
+      if (actor.kind === 'guest') {
+        const actorMembership = await requireActorMembership(actor, match.crew_id)
+        if (actorMembership.id !== match.opponent_membership_id) {
+          throw new Error('This Beer Bomb invite has already been claimed.')
+        }
+
+        await ensureNightParticipant(match.night_id, actorMembership.id)
+        responseCrewId = match.crew_id
+        break
+      }
+
+      if (actor.kind !== 'authenticated') {
+        throw new Error('Sign in or join as a guest to claim this Beer Bomb invite.')
+      }
+
+      const profile = await ensureProfile(actor.authUser)
+      const { data: existingMembership, error: existingMembershipError } = await supabase
+        .from('crew_memberships')
+        .select('id')
+        .eq('crew_id', match.crew_id)
+        .eq('profile_id', profile.id)
+        .eq('status', 'active')
+        .maybeSingle()
+
+      if (existingMembershipError) throw existingMembershipError
+      if (!existingMembership) {
+        throw new Error('Join this crew before claiming the Beer Bomb invite.')
+      }
+
+      if (existingMembership.id === match.created_by_membership_id || existingMembership.id === match.opponent_membership_id) {
+        await ensureNightParticipant(match.night_id, existingMembership.id)
+        responseCrewId = match.crew_id
+        break
+      }
+
+      const claimResult = await mergeGuestMembershipIntoProfile(profile, match.opponent_membership_id)
+      await ensureNightParticipant(match.night_id, claimResult.targetMembershipId)
+
+      await recordAuditLog(match.crew_id, claimResult.targetMembershipId, 'mini_game_invite_claimed', 'mini_game_match', match.id, {
+        guestIdentityId: claimResult.guestIdentityId,
+        targetMembershipId: claimResult.targetMembershipId,
       })
+
+      await notifyCrewMembers(match.crew_id, {
+        type: 'member_joined',
+        title: `${profile.display_name} joined from Beer Bomb`,
+        message: `${profile.display_name} claimed the shared Beer Bomb invite.`,
+        payload: { membershipId: claimResult.targetMembershipId, matchId: match.id },
+        excludeMembershipId: claimResult.targetMembershipId,
+      })
+
+      responseCrewId = match.crew_id
       break
     }
 

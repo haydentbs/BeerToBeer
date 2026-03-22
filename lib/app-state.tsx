@@ -45,6 +45,7 @@ import type { DrinkTheme } from '@/lib/themes'
 import {
   cancelMiniGameChallenge,
   castDisputeVote,
+  claimMiniGameInvite,
   confirmResult,
   createMiniGameChallenge,
   disputeResult,
@@ -85,7 +86,7 @@ interface CreateBetInput {
 
 interface CreateMiniGameInput {
   title: string
-  opponent: { id: string }
+  opponent: { id?: string; name: string; isExternal?: boolean }
   wager: number
   closeTime: number
   boardSize?: number
@@ -104,7 +105,7 @@ export interface AppStateValue {
 
   // Auth actions
   handleGoogleAuth: (opts?: { preserveGuestSession?: boolean }) => Promise<AuthActionResult>
-  handleGuestJoin: (name: string, crewCode: string) => Promise<AuthActionResult>
+  handleGuestJoin: (name: string, crewCode: string, options?: { matchId?: string }) => Promise<AuthActionResult>
   handleDevAuth: (identityId: string) => Promise<AuthActionResult>
   handleSignOut: () => Promise<void>
   handleFinishAccount: () => Promise<void>
@@ -126,7 +127,7 @@ export interface AppStateValue {
 
   // Crew actions
   handleCreateCrew: (name: string) => Promise<boolean>
-  handleJoinCrew: (code: string) => Promise<boolean>
+  handleJoinCrew: (code: string, options?: { redirectToCrew?: boolean }) => Promise<boolean>
   handleLeaveCrew: () => void
   handleRenameCrew: (name: string) => void
   handleKickMember: (memberId: string) => void
@@ -156,6 +157,7 @@ export interface AppStateValue {
   handleBeerBombDecline: (matchId: string) => void
   handleBeerBombCancel: (matchId: string) => void
   handleBeerBombTurn: (matchId: string, slotIndex: number) => Promise<void>
+  handleClaimMiniGameInvite: (matchId: string, crewId: string) => Promise<boolean>
 
   // Modal state
   showCreateBet: boolean
@@ -952,14 +954,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const handleGuestJoin = async (name: string, crewCode: string): Promise<AuthActionResult> => {
+  const handleGuestJoin = async (name: string, crewCode: string, options?: { matchId?: string }): Promise<AuthActionResult> => {
     setIsAuthSubmitting(true)
     setAuthSubmittingMode('guest')
     setAuthNotice(null)
     setLoadingCopy({ message: 'Joining your crew…', submessage: 'Setting up your guest tab' })
     try {
       clearDevAuthCookie()
-      const payload = await joinGuest(name, crewCode)
+      const payload = await joinGuest(name, crewCode, options?.matchId)
       if (!payload.session) return { error: 'Guest session could not be created.' }
       setSession(payload.session)
       applyCommandPayload(payload)
@@ -1144,10 +1146,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return didCreateCrew
   }
 
-  const handleJoinCrew = async (code: string) => {
+  const handleJoinCrew = async (code: string, options?: { redirectToCrew?: boolean }) => {
     setIsJoiningCrew(true)
     const existingCrewIds = new Set(crews.map((crew) => crew.id))
     const normalizedCode = normalizeInviteCode(code)
+    const shouldRedirectToCrew = options?.redirectToCrew !== false
     const didJoinCrew = await runMutation(async () => {
       const payload = await mutateApp('joinCrew', { code })
       applyCommandPayload(payload)
@@ -1157,7 +1160,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         payload.changed.session?.crews.find((crew) => normalizeInviteCode(crew.inviteCode) === normalizedCode)?.id
       if (joinedCrewId) {
         setActiveCrewId(joinedCrewId)
-        router.push(`/crew/${joinedCrewId}/tonight`)
+        if (shouldRedirectToCrew) {
+          router.push(`/crew/${joinedCrewId}/tonight`)
+        }
       }
     }, 'Crew code not found.')
     setIsJoiningCrew(false)
@@ -1351,17 +1356,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const handleCreateMiniGameChallenge = (challengeInput: CreateMiniGameInput) => {
     if (!activeCrewId || !session || !activeCrew?.currentNight) return
-    const opponentMember = activeCrew.members.find((member) => member.id === challengeInput.opponent.id)
-    if (!opponentMember) return
-    const opponentMembershipId = getCrewMemberMembershipId(opponentMember)
-    if (!opponentMembershipId) return
+    const isExternalOpponent = challengeInput.opponent.isExternal || !challengeInput.opponent.id
+    const opponentMember = isExternalOpponent
+      ? null
+      : activeCrew.members.find((member) => member.id === challengeInput.opponent.id)
+    const opponentMembershipId = opponentMember ? getCrewMemberMembershipId(opponentMember) : null
+
+    if (!isExternalOpponent && !opponentMembershipId) return
 
     void runMutation(async () => {
       const payload = await createMiniGameChallenge({
         crewId: activeCrewId,
         nightId: activeCrew.currentNight!.id,
         title: challengeInput.title,
-        opponentMembershipId,
+        ...(opponentMembershipId ? { opponentMembershipId } : {}),
+        ...(isExternalOpponent ? { externalOpponentName: challengeInput.opponent.name } : {}),
         wager: challengeInput.wager,
         closeTime: challengeInput.closeTime,
         boardSize: challengeInput.boardSize ?? 8,
@@ -1372,11 +1381,22 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         .filter((match) =>
           match.status === 'pending' &&
           (match.challenger.id === session.user.id || match.challenger.name === session.user.name) &&
-          (match.opponent.id === challengeInput.opponent.id || match.opponent.name === opponentMember.name)
+          (
+            (challengeInput.opponent.id && match.opponent.id === challengeInput.opponent.id) ||
+            match.opponent.name === (opponentMember?.name ?? challengeInput.opponent.name)
+          )
         )
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]
       if (createdMatch) setSelectedBeerBombMatchId(createdMatch.id)
     })
+  }
+
+  const handleClaimMiniGameInvite = async (matchId: string, crewId: string) => {
+    return runMutation(async () => {
+      const payload = await claimMiniGameInvite({ matchId, crewId })
+      applyCommandPayload(payload)
+      setActiveCrewId(crewId)
+    }, 'Could not open this Beer Bomb invite.')
   }
 
   // Broadcast updated match state to the other player via WebSocket
@@ -1541,6 +1561,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     handleBeerBombDecline,
     handleBeerBombCancel,
     handleBeerBombTurn,
+    handleClaimMiniGameInvite,
     showCreateBet,
     setShowCreateBet,
     showProfile,

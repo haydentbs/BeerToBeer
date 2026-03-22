@@ -30,6 +30,7 @@ export default function PlayPage({ params }: { params: Promise<{ matchId: string
     handleGoogleAuth,
     handleGuestJoin,
     handleJoinCrew,
+    handleClaimMiniGameInvite,
     handleDevAuth,
     devAuthEnabled,
     supabaseConfigured,
@@ -40,6 +41,7 @@ export default function PlayPage({ params }: { params: Promise<{ matchId: string
   const [localError, setLocalError] = useState<string | null>(null)
   const [localNotice, setLocalNotice] = useState<string | null>(null)
   const [joinAttempted, setJoinAttempted] = useState(false)
+  const [claimAttempted, setClaimAttempted] = useState(false)
 
   const handleJoinCrewRef = useRef(handleJoinCrew)
   handleJoinCrewRef.current = handleJoinCrew
@@ -62,36 +64,34 @@ export default function PlayPage({ params }: { params: Promise<{ matchId: string
   // Build the destination URL with the match query param
   const getDestination = (crewId: string) => `/crew/${crewId}/tonight?match=${matchId}`
 
-  // Auto-redirect or auto-join for authenticated users
+  // Auto-join the crew for authenticated users who do not have access yet.
   useEffect(() => {
     if (!isAuthReady || !session || !isDataReady) return
 
-    if (existingCrew) {
-      // Already in the crew — go straight to the match
-      router.push(getDestination(existingCrew.id))
-      return
-    }
-
-    // Not in this crew yet — try to join using the invite code
-    if (crewCode && !joinAttempted) {
+    if (!existingCrew && crewCode && !joinAttempted) {
       setJoinAttempted(true)
-      void handleJoinCrewRef.current(crewCode).then((success) => {
+      void handleJoinCrewRef.current(crewCode, { redirectToCrew: false }).then((success) => {
         if (!success) {
           setLocalError('Could not join this crew. The invite code may be invalid.')
         }
-        // handleJoinCrew navigates on success, but to /tonight without ?match
-        // We'll catch the redirect in the next render cycle when visibleCrews updates
       })
     }
-  }, [isAuthReady, isDataReady, session, existingCrew, crewCode, joinAttempted, router, matchId])
+  }, [isAuthReady, isDataReady, session, existingCrew, crewCode, joinAttempted])
 
-  // After joining, visibleCrews will update — redirect to the match
+  // Once the crew is available, claim the shared invite if needed and then open the match.
   useEffect(() => {
-    if (!isAuthReady || !session || !isDataReady || !joinAttempted) return
-    if (existingCrew) {
+    if (!isAuthReady || !session || !isDataReady || !existingCrew || claimAttempted) return
+
+    setClaimAttempted(true)
+    void handleClaimMiniGameInvite(matchId, existingCrew.id).then((success) => {
+      if (!success) {
+        setLocalError('Could not open this Beer Bomb invite.')
+        setClaimAttempted(false)
+        return
+      }
       router.push(getDestination(existingCrew.id))
-    }
-  }, [isAuthReady, isDataReady, session, existingCrew, joinAttempted, router, matchId])
+    })
+  }, [claimAttempted, existingCrew, handleClaimMiniGameInvite, isAuthReady, isDataReady, matchId, router, session])
 
   // --- Render states ---
 
@@ -162,7 +162,7 @@ export default function PlayPage({ params }: { params: Promise<{ matchId: string
     }
     // Store pending match so tonight page auto-opens it after redirect
     try { sessionStorage.setItem('pendingBeerBombMatchId', matchId) } catch {}
-    handleResult(await handleGuestJoin(name.trim(), crewCode))
+    handleResult(await handleGuestJoin(name.trim(), crewCode, { matchId }))
   }
 
   const handleGoogleSubmit = async () => {

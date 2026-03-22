@@ -162,12 +162,13 @@ export async function fetchCrewFeedState(crewId: string, after: number | null) {
   return reviveFeedResponse(payload)
 }
 
-export async function joinGuest(name: string, crewCode: string) {
+export async function joinGuest(name: string, crewCode: string, matchId?: string) {
   const payload = await apiFetch<CommandResponse>('/api/v2/guest/join', {
     method: 'POST',
     body: JSON.stringify({
       name,
       crewCode,
+      matchId,
     }),
   })
 
@@ -295,6 +296,13 @@ export async function respondToMiniGameChallenge(payload: Record<string, any>): 
 
 export async function takeMiniGameTurn(payload: Record<string, any>): Promise<CommandResponse> {
   return reviveCommandResponse(await apiFetch<CommandResponse>(`/api/v2/mini-games/matches/${payload.matchId}/turn`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }))
+}
+
+export async function claimMiniGameInvite(payload: Record<string, any>): Promise<CommandResponse> {
+  return reviveCommandResponse(await apiFetch<CommandResponse>(`/api/v2/mini-games/matches/${payload.matchId}/claim`, {
     method: 'POST',
     body: JSON.stringify(payload),
   }))

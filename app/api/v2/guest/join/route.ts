@@ -5,7 +5,7 @@ import { jsonError } from '@/lib/server/v2/route-helpers'
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const payload = await runGuestJoinCommand(body.name, body.crewCode)
+    const payload = await runGuestJoinCommand(body.name, body.crewCode, { matchId: body.matchId })
     const response = NextResponse.json(payload)
 
     if (payload.session) {
