@@ -719,6 +719,58 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     let snapshotTimer: ReturnType<typeof setTimeout> | null = null
 
+    // Fast-path: apply match changes directly from the realtime payload
+    // instead of fetching the entire crew snapshot.
+    const applyMatchChange = (eventType: string, newRow: any) => {
+      if (cancelled || !newRow?.id) return
+
+      if (eventType === 'UPDATE') {
+        // Merge changed fields into the existing match in crews state
+        startTransition(() => {
+          setCrews((current) =>
+            current.map((crew) => {
+              if (crew.id !== activeCrewId || !crew.currentNight) return crew
+              const matchIndex = (crew.currentNight.miniGameMatches ?? []).findIndex(
+                (m: any) => m.id === newRow.id
+              )
+              if (matchIndex === -1) return crew
+
+              const existing = (crew.currentNight.miniGameMatches as any[])[matchIndex]
+              const updated = {
+                ...existing,
+                status: newRow.status ?? existing.status,
+                revealedSlotIndices: Array.isArray(newRow.revealed_slots)
+                  ? newRow.revealed_slots.map(Number)
+                  : existing.revealedSlotIndices,
+                currentTurnMembershipId: newRow.current_turn_membership_id ?? null,
+                winnerMembershipId: newRow.winner_membership_id ?? existing.winnerMembershipId,
+                loserMembershipId: newRow.loser_membership_id ?? existing.loserMembershipId,
+                agreedWager: newRow.agreed_wager != null ? Number(newRow.agreed_wager) : existing.agreedWager,
+                acceptedAt: newRow.accepted_at ? new Date(newRow.accepted_at) : existing.acceptedAt,
+                completedAt: newRow.completed_at ? new Date(newRow.completed_at) : existing.completedAt,
+                declinedAt: newRow.declined_at ? new Date(newRow.declined_at) : existing.declinedAt,
+                cancelledAt: newRow.cancelled_at ? new Date(newRow.cancelled_at) : existing.cancelledAt,
+                updatedAt: newRow.updated_at ? new Date(newRow.updated_at) : existing.updatedAt,
+                bombSlotIndex: newRow.status === 'completed' && newRow.hidden_slot_index != null
+                  ? Number(newRow.hidden_slot_index)
+                  : existing.bombSlotIndex,
+              }
+
+              const nextMatches = [...crew.currentNight.miniGameMatches as any[]]
+              nextMatches[matchIndex] = updated
+              return {
+                ...crew,
+                currentNight: { ...crew.currentNight, miniGameMatches: nextMatches },
+              }
+            })
+          )
+        })
+      } else {
+        // INSERT or DELETE — need fresh data, fall back to snapshot
+        requestSnapshot()
+      }
+    }
+
     const requestSnapshot = () => {
       if (cancelled || isRealtimeSnapshotInFlightRef.current) {
         return
@@ -741,12 +793,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         })
     }
 
-    const scheduleSnapshot = () => {
-      if (cancelled) return
-      if (snapshotTimer) clearTimeout(snapshotTimer)
-      snapshotTimer = setTimeout(requestSnapshot, 75)
-    }
-
     const channel = supabase
       .channel(`crew:${activeCrewId}:beer-bomb:${activeNightId}`)
       .on('postgres_changes', {
@@ -754,8 +800,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         schema: 'public',
         table: 'mini_game_matches',
         filter: `night_id=eq.${activeNightId}`,
-      }, () => {
-        scheduleSnapshot()
+      }, (payload: any) => {
+        applyMatchChange(payload.eventType, payload.new)
       })
       .subscribe()
 
@@ -777,7 +823,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false
     let timeoutId: ReturnType<typeof setTimeout> | null = null
-    const intervalMs = hasActiveNight ? 8000 : 15000
+    // Poll faster when a beer bomb match is actively being played
+    const hasActiveMiniGame = Boolean(
+      activeCrew?.currentNight?.miniGameMatches?.some((m: any) => m.status === 'active')
+    )
+    const intervalMs = hasActiveMiniGame ? 3000 : hasActiveNight ? 8000 : 15000
 
     const scheduleNextPoll = (delay: number) => {
       if (cancelled) return
