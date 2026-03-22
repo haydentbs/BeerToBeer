@@ -38,6 +38,8 @@ import {
   getCrewMemberMembershipId,
   type Crew,
   type Bet,
+  type LeaderboardEntry,
+  type LedgerEntry,
   type Notification,
 } from '@/lib/store'
 import { useTheme } from '@/components/theme-provider'
@@ -118,7 +120,7 @@ export interface AppStateValue {
   crews: Crew[]
   visibleCrews: Crew[]
   crewNetPositions: Record<string, number>
-  crewDataById: Record<string, { tonightLedger: any[]; allTimeLedger: any[]; leaderboard: any[] }>
+  crewDataById: Record<string, { tonightLedger: LedgerEntry[]; allTimeLedger: LedgerEntry[]; leaderboard: LeaderboardEntry[] }>
   notifications: Notification[]
 
   // Active crew management
@@ -269,7 +271,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [activeCrewId, setActiveCrewId] = useState<string | null>(null)
   const [crews, setCrews] = useState<Crew[]>([])
   const [crewNetPositions, setCrewNetPositions] = useState<Record<string, number>>({})
-  const [crewDataById, setCrewDataById] = useState<Record<string, { tonightLedger: any[]; allTimeLedger: any[]; leaderboard: any[] }>>({})
+  const [crewDataById, setCrewDataById] = useState<Record<string, { tonightLedger: LedgerEntry[]; allTimeLedger: LedgerEntry[]; leaderboard: LeaderboardEntry[] }>>({})
   const [crewCursorById, setCrewCursorById] = useState<Record<string, number>>({})
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [pendingCrewThemeById, setPendingCrewThemeById] = useState<Record<string, DrinkTheme>>({})
@@ -1069,6 +1071,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const handleOpenCreateBet = () => {
+    if (!activeCrew?.currentNight) {
+      return
+    }
     setShowProfile(false)
     setSelectedBetId(null)
     setSelectedBeerBombMatchId(null)

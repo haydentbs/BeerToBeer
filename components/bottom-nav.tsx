@@ -7,9 +7,10 @@ interface BottomNavProps {
   activeTab: 'tonight' | 'ledger' | 'leaderboard' | 'crew'
   onTabChange: (tab: 'tonight' | 'ledger' | 'leaderboard' | 'crew') => void
   onCreateBet: () => void
+  createBetDisabled?: boolean
 }
 
-export function BottomNav({ activeTab, onTabChange, onCreateBet }: BottomNavProps) {
+export function BottomNav({ activeTab, onTabChange, onCreateBet, createBetDisabled = false }: BottomNavProps) {
   const tabs = [
     { id: 'tonight' as const, label: 'Tonight', icon: Beer },
     { id: 'ledger' as const, label: 'Ledger', icon: Receipt },
@@ -39,10 +40,20 @@ export function BottomNav({ activeTab, onTabChange, onCreateBet }: BottomNavProp
         {/* Center Create Button */}
         <button
           onClick={onCreateBet}
+          disabled={createBetDisabled}
           aria-label="Create bet or challenge"
-          className="relative -mt-6 flex items-center justify-center w-16 h-16 rounded-full bg-primary border-3 border-border shadow-[4px_4px_0px_0px_var(--border)] active:shadow-[2px_2px_0px_0px_var(--border)] active:translate-x-[2px] active:translate-y-[2px] transition-all"
+          title={createBetDisabled ? 'Start a night to place bets' : undefined}
+          className={cn(
+            'relative -mt-6 flex h-16 w-16 items-center justify-center rounded-full border-3 transition-all',
+            createBetDisabled
+              ? 'cursor-not-allowed border-border/60 bg-muted text-muted-foreground opacity-60 shadow-none'
+              : 'bg-primary border-border shadow-[4px_4px_0px_0px_var(--border)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-[2px_2px_0px_0px_var(--border)]'
+          )}
         >
-          <Plus className="h-8 w-8 text-primary-foreground" strokeWidth={3} />
+          <Plus
+            className={cn('h-8 w-8', createBetDisabled ? 'text-muted-foreground' : 'text-primary-foreground')}
+            strokeWidth={3}
+          />
         </button>
 
         {tabs.slice(2).map((tab) => (

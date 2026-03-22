@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { ArrowRight, Check, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatDrinks, type LedgerEntry, type User } from '@/lib/store'
@@ -35,12 +35,12 @@ export function LedgerScreen({ tonightLedger, allTimeLedger, onSettle }: LedgerS
     return { owed, owing, net: owed - owing }
   }
 
-  const { owed, owing, net } = calculateNet(ledger)
+  const { owed, owing, net } = useMemo(() => calculateNet(ledger), [ledger, currentUser.id])
 
   // Group by relationship
   const getRelationships = (entries: LedgerEntry[]) => {
     const relationships: Record<string, { user: User, balance: number, settled: number, direction: 'owed' | 'owing' }> = {}
-    
+
     entries.forEach(entry => {
       const outstanding = entry.drinks - entry.settled
       if (entry.toUser.id === currentUser.id) {
@@ -58,11 +58,11 @@ export function LedgerScreen({ tonightLedger, allTimeLedger, onSettle }: LedgerS
         relationships[key].balance -= outstanding
       }
     })
-    
+
     return Object.values(relationships).filter(r => Math.abs(r.balance) > 0.01)
   }
 
-  const relationships = getRelationships(ledger)
+  const relationships = useMemo(() => getRelationships(ledger), [ledger, currentUser.id])
 
   return (
     <div className="pb-24 px-4 space-y-6">

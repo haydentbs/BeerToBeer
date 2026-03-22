@@ -169,7 +169,12 @@ export default function CrewLayout({
           {children}
         </div>
 
-        <BottomNav activeTab={activeTab} onTabChange={handleTabChange} onCreateBet={handleOpenCreateBet} />
+        <BottomNav
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          onCreateBet={handleOpenCreateBet}
+          createBetDisabled={!activeCrew.currentNight}
+        />
 
         <CreateBetModal
           isOpen={showCreateBet}

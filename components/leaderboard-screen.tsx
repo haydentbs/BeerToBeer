@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Trophy, TrendingUp, Flame, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatDrinks, type User } from '@/lib/store'
@@ -22,14 +22,19 @@ export function LeaderboardScreen({ leaderboard }: LeaderboardScreenProps) {
   const currentUser = useCurrentUser()
   const [stat, setStat] = useState<'totalWon' | 'winRate' | 'streak'>('totalWon')
 
-  const sortedLeaderboard = [...leaderboard].sort((a, b) => {
+  const sortedLeaderboard = useMemo(() => [...leaderboard].sort((a, b) => {
     if (stat === 'totalWon') return b.totalWon - a.totalWon
     if (stat === 'winRate') return b.winRate - a.winRate
     return b.streak - a.streak
-  })
+  }), [leaderboard, stat])
 
   const topThree = sortedLeaderboard.slice(0, 3)
   const rest = sortedLeaderboard.slice(3)
+
+  const currentUserEntry = useMemo(
+    () => leaderboard.find(e => e.user.id === currentUser.id),
+    [leaderboard, currentUser.id]
+  )
 
   return (
     <div className="pb-24 px-4 space-y-6">
@@ -174,26 +179,26 @@ export function LeaderboardScreen({ leaderboard }: LeaderboardScreenProps) {
         <div className="grid grid-cols-2 gap-3">
           <div className="p-3 rounded-lg bg-surface border border-border">
             <div className="text-2xl font-bold text-win">
-              {formatDrinks(leaderboard.find(e => e.user.id === currentUser.id)?.totalWon || 0)}
+              {formatDrinks(currentUserEntry?.totalWon || 0)}
             </div>
             <div className="text-xs text-muted-foreground">Total won</div>
           </div>
           <div className="p-3 rounded-lg bg-surface border border-border">
             <div className="text-2xl font-bold text-primary">
-              {Math.round((leaderboard.find(e => e.user.id === currentUser.id)?.winRate || 0) * 100)}%
+              {Math.round((currentUserEntry?.winRate || 0) * 100)}%
             </div>
             <div className="text-xs text-muted-foreground">Win rate</div>
           </div>
           <div className="p-3 rounded-lg bg-surface border border-border">
             <div className="text-2xl font-bold text-foreground">
-              {formatDrinks(leaderboard.find(e => e.user.id === currentUser.id)?.bestNight || 0)}
+              {formatDrinks(currentUserEntry?.bestNight || 0)}
             </div>
             <div className="text-xs text-muted-foreground">Best night</div>
           </div>
           <div className="p-3 rounded-lg bg-surface border border-border">
             <div className="text-2xl font-bold text-primary flex items-center gap-1">
               <Flame className="h-5 w-5" />
-              {leaderboard.find(e => e.user.id === currentUser.id)?.streak || 0}
+              {currentUserEntry?.streak || 0}
             </div>
             <div className="text-xs text-muted-foreground">Current streak</div>
           </div>

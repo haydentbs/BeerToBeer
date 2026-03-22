@@ -1,5 +1,6 @@
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { buildGuestSession, type AppSession } from '@/lib/auth'
+import { getInitials } from '@/lib/utils'
 import {
   BEER_BOMB_BOARD_SIZE,
   deriveLedgerEntriesFromBets,
@@ -59,12 +60,7 @@ const MINI_GAME_MATCH_SELECT =
   'id, crew_id, night_id, game_key, title, status, created_by_membership_id, opponent_membership_id, proposed_wager, agreed_wager, board_size, hidden_slot_index, current_turn_membership_id, starting_player_membership_id, winner_membership_id, loser_membership_id, revealed_slots, metadata, accepted_at, declined_at, cancelled_at, completed_at, created_at, updated_at, bet_id, respond_by_at'
 const NOTIFICATION_BOOTSTRAP_LIMIT = 50
 
-function getInitials(value: string) {
-  const parts = value.trim().split(/\s+/).filter(Boolean)
-  if (!parts.length) return 'BS'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase()
-}
+
 
 function normalizeInviteCode(value: string) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -474,9 +470,11 @@ async function mergeGuestMembershipIntoProfile(profile: any, guestMembershipId: 
       ['audit_log', 'actor_membership_id'],
     ]
 
-    for (const [table, column] of referenceUpdates) {
-      await updateMembershipReference(table, column, guestMembership.id, existingMembership.id)
-    }
+    await Promise.all(
+      referenceUpdates.map(([table, column]) =>
+        updateMembershipReference(table, column, guestMembership.id, existingMembership.id)
+      )
+    )
 
     const nextStatus =
       existingMembership.status === 'active' || guestMembership.status === 'active'

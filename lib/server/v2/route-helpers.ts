@@ -5,10 +5,10 @@ export type RouteParams<T extends Record<string, string>> = {
   params: Promise<T>
 }
 
-export function jsonError(error: unknown) {
-  return new NextResponse(error instanceof Error ? error.message : 'Unexpected error', {
-    status: 500,
-  })
+export function jsonError(error: unknown, status = 500) {
+  console.error('Route error:', error)
+  const message = error instanceof Error ? error.message : 'Unexpected error'
+  return NextResponse.json({ error: message }, { status })
 }
 
 export async function withActor<T>(

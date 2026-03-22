@@ -1,5 +1,6 @@
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { type User } from '@/lib/store'
+import { getInitials } from '@/lib/utils'
 
 const GUEST_SESSION_COOKIE = 'settleup_guest_session'
 
@@ -107,19 +108,3 @@ function getDisplayName(authUser: SupabaseUser) {
   return 'Player'
 }
 
-function getInitials(value: string) {
-  const parts = value
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-
-  if (parts.length === 0) {
-    return 'BS'
-  }
-
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase()
-  }
-
-  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase()
-}

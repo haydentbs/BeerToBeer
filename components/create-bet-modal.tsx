@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Bomb, HelpCircle, Lock, Minus, Plus, Swords, Trophy, X } from 'lucide-react'
+import { useTheme } from '@/components/theme-provider'
 import { cn } from '@/lib/utils'
 import type { BetSubtype, User } from '@/lib/store'
 import { useCurrentUser } from '@/lib/current-user'
@@ -36,6 +37,7 @@ type PropFormat = 'yesno' | 'overunder' | 'multi'
 
 export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, members }: CreateBetModalProps) {
   const currentUser = useCurrentUser()
+  const { mode: appMode } = useTheme()
   const [step, setStep] = useState(1)
   const [mode, setMode] = useState<CreationMode | null>(null)
   const [propFormat, setPropFormat] = useState<PropFormat>('yesno')
@@ -131,6 +133,17 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
       (mode !== 'prop' || propFormat !== 'multi' || multiOptions.length >= 3) &&
       (mode !== 'prop' || propFormat !== 'overunder' || (line > 0 && Number.isInteger(line * 2)))
   )
+  const classicSelectedCardClass =
+    appMode === 'classic'
+      ? 'border-primary bg-card shadow-brutal-sm'
+      : 'border-primary bg-primary/10'
+  const optionCardClass = (isSelected: boolean) =>
+    cn(
+      'w-full rounded-xl border-3 p-4 text-left transition-all',
+      isSelected
+        ? classicSelectedCardClass
+        : 'border-border/70 bg-card hover:border-primary/50 hover:bg-surface/30'
+    )
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
@@ -157,18 +170,18 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
 
             <div className="space-y-3">
               {/* Tournament — coming soon */}
-              <div className="w-full rounded-xl border-3 border-border/40 p-4 opacity-40 cursor-not-allowed">
+              <div className="w-full cursor-not-allowed rounded-xl border-3 border-border/50 bg-card/70 p-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-                    <Trophy className="h-6 w-6 text-primary" />
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/12">
+                    <Trophy className="h-6 w-6 text-primary/70" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-bold text-foreground">Tournament</h3>
-                    <p className="text-sm text-muted-foreground">Brackets & elimination</p>
+                    <h3 className="font-bold text-card-foreground/65">Tournament</h3>
+                    <p className="text-sm text-card-foreground/45">Brackets & elimination</p>
                   </div>
                   <div className="flex items-center gap-1.5 rounded-full border border-border/60 px-2.5 py-1">
-                    <Lock className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-[11px] font-semibold text-muted-foreground">Soon</span>
+                    <Lock className="h-3 w-3 text-card-foreground/45" />
+                    <span className="text-[11px] font-semibold text-card-foreground/45">Soon</span>
                   </div>
                 </div>
               </div>
@@ -178,18 +191,15 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
                   setMode('prop')
                   setStep(2)
                 }}
-                className={cn(
-                  'w-full rounded-xl border-3 p-4 text-left transition-all',
-                  mode === 'prop' ? 'border-primary bg-primary/10' : 'border-border/60 bg-card hover:border-primary/50 hover:bg-surface/30'
-                )}
+                className={optionCardClass(mode === 'prop')}
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/20">
                     <HelpCircle className="h-6 w-6 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-foreground">Group Bet</h3>
-                    <p className="text-sm text-muted-foreground">Ask a question everyone bets on</p>
+                    <h3 className="font-bold text-card-foreground">Group Bet</h3>
+                    <p className="text-sm text-card-foreground/65">Ask a question everyone bets on</p>
                   </div>
                 </div>
               </button>
@@ -199,18 +209,15 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
                   setMode('h2h')
                   setStep(2)
                 }}
-                className={cn(
-                  'w-full rounded-xl border-3 p-4 text-left transition-all',
-                  mode === 'h2h' ? 'border-primary bg-primary/10' : 'border-border/60 bg-card hover:border-primary/50 hover:bg-surface/30'
-                )}
+                className={optionCardClass(mode === 'h2h')}
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/20">
                     <Swords className="h-6 w-6 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-foreground">Challenge</h3>
-                    <p className="text-sm text-muted-foreground">1v1 with side bets</p>
+                    <h3 className="font-bold text-card-foreground">Challenge</h3>
+                    <p className="text-sm text-card-foreground/65">1v1 with side bets</p>
                   </div>
                 </div>
               </button>
@@ -220,18 +227,15 @@ export function CreateBetModal({ isOpen, onClose, onCreate, onCreateMiniGame, me
                   setMode('beerBomb')
                   setStep(2)
                 }}
-                className={cn(
-                  'w-full rounded-xl border-3 p-4 text-left transition-all',
-                  mode === 'beerBomb' ? 'border-primary bg-primary/10' : 'border-border/60 bg-card hover:border-primary/50 hover:bg-surface/30'
-                )}
+                className={optionCardClass(mode === 'beerBomb')}
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/20">
                     <Bomb className="h-6 w-6 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-foreground">Mini Games</h3>
-                    <p className="text-sm text-muted-foreground">Beer Bomb now, more game modes later</p>
+                    <h3 className="font-bold text-card-foreground">Mini Games</h3>
+                    <p className="text-sm text-card-foreground/65">Beer Bomb now, more game modes later</p>
                   </div>
                 </div>
               </button>

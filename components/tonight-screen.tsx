@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { AlertTriangle, Bomb, Clock } from 'lucide-react'
 import { BetCardCompact } from './bet-card-compact'
 import { BetDetailModal } from './bet-detail-modal'
@@ -101,19 +101,24 @@ export function TonightScreen({
   const { drinkEmoji } = useTheme()
 
   const miniGameMatches = (night.miniGameMatches ?? []) as unknown as BeerBombMatch[]
-  const betsById = new Map(night.bets.map((bet) => [bet.id, bet]))
 
-  // Unified bet categories
-  const activeBets = night.bets.filter((bet) => bet.status === 'open')
-  const awaitingBets = night.bets.filter((bet) => ['pending_result', 'disputed'].includes(bet.status))
-  const settledBets = night.bets.filter((bet) => ['resolved', 'void', 'cancelled'].includes(bet.status))
+  const { betsById, activeBets, awaitingBets, settledBets, activeMiniGames, settledMiniGames, activeCount } = useMemo(() => {
+    const betsById = new Map(night.bets.map((bet) => [bet.id, bet]))
 
-  // Mini-game categories
-  const activeMiniGames = miniGameMatches.filter((m) => m.status === 'active')
-  const settledMiniGames = miniGameMatches.filter((m) => m.status === 'completed')
+    // Unified bet categories
+    const activeBets = night.bets.filter((bet) => bet.status === 'open')
+    const awaitingBets = night.bets.filter((bet) => ['pending_result', 'disputed'].includes(bet.status))
+    const settledBets = night.bets.filter((bet) => ['resolved', 'void', 'cancelled'].includes(bet.status))
 
-  // Counts for stats (exclude pending_accept and declined)
-  const activeCount = activeBets.length + activeMiniGames.length
+    // Mini-game categories
+    const activeMiniGames = miniGameMatches.filter((m) => m.status === 'active')
+    const settledMiniGames = miniGameMatches.filter((m) => m.status === 'completed')
+
+    // Counts for stats (exclude pending_accept and declined)
+    const activeCount = activeBets.length + activeMiniGames.length
+
+    return { betsById, activeBets, awaitingBets, settledBets, activeMiniGames, settledMiniGames, activeCount }
+  }, [night.bets, miniGameMatches])
   const totalPool = night.bets.reduce((acc, bet) => acc + bet.totalPool, 0)
 
   const liveSelectedBet = selectedBetId ? betsById.get(selectedBetId) ?? null : null

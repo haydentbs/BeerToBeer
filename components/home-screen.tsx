@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Beer, Bell, Plus, Users, ArrowRight, ChevronRight, Trophy, Flame, LogOut, FlaskConical, Swords } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { type Crew, type User, type Notification } from '@/lib/store'
@@ -58,8 +58,8 @@ export function HomeScreen({
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [guestPromptAction, setGuestPromptAction] = useState<'none' | 'create' | 'join'>('none')
 
-  const liveCrews = crews.filter(c => c.currentNight)
-  const otherCrews = crews.filter(c => !c.currentNight)
+  const liveCrews = useMemo(() => crews.filter(c => c.currentNight), [crews])
+  const otherCrews = useMemo(() => crews.filter(c => !c.currentNight), [crews])
 
   const unreadCount = notifications.filter(n => !n.read).length
 

@@ -1,5 +1,6 @@
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import type { AppSession } from '@/lib/auth'
+import { getInitials } from '@/lib/utils'
 import type { CrewDataBundle } from '@/lib/server/domain'
 import {
   joinCrewAsGuest,
@@ -39,12 +40,6 @@ interface ActorContext {
   membershipIdByCrewId: Map<string, string>
 }
 
-function getInitials(value: string) {
-  const parts = value.trim().split(/\s+/).filter(Boolean)
-  if (!parts.length) return 'BS'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return `${parts[0][0] ?? ''}${parts[1][0] ?? ''}`.toUpperCase()
-}
 
 function normalizeInviteCode(value: string | null | undefined) {
   return (value ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
