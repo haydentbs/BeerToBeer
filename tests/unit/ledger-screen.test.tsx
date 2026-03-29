@@ -25,6 +25,16 @@ function makeFriend(): User {
   }
 }
 
+function makeUser(id: string, name: string, initials: string): User {
+  return {
+    id,
+    membershipId: `membership-${id}`,
+    name,
+    avatar: '',
+    initials,
+  }
+}
+
 function renderLedgerScreen({
   tonightLedger,
   allTimeLedger,
@@ -74,10 +84,29 @@ describe('LedgerScreen', () => {
       {
         fromUser: friend,
         toUser: currentUser,
-        drinks: 2.5,
-        settled: 1,
+        drinks: 1.5,
+        settled: 0,
       },
       1
     )
+  })
+
+  it('shows the simplified repayment path instead of intermediate debt chains', () => {
+    const currentUser = makeUser('player-3', 'Player 3', 'P3')
+    const playerOne = makeUser('player-1', 'Player 1', 'P1')
+    const playerTwo = makeUser('player-2', 'Player 2', 'P2')
+
+    renderLedgerScreen({
+      currentUser,
+      tonightLedger: [
+        { fromUser: playerOne, toUser: playerTwo, drinks: 2, settled: 0 },
+        { fromUser: playerTwo, toUser: currentUser, drinks: 2, settled: 0 },
+      ],
+      allTimeLedger: [],
+    })
+
+    expect(screen.getByText('Player 1')).toBeInTheDocument()
+    expect(screen.queryByText('Player 2')).not.toBeInTheDocument()
+    expect(screen.getByText(/repayments are simplified across the crew/i)).toBeInTheDocument()
   })
 })

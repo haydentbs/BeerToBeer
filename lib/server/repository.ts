@@ -4504,12 +4504,16 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
 
       const { data: ledgerRows, error: ledgerRowsError } = await supabase
         .from('ledger_events')
-        .select('from_membership_id, to_membership_id, event_type, drinks')
+        .select('from_membership_id, to_membership_id, event_type, status, drinks')
         .eq('crew_id', payload.crewId)
 
       if (ledgerRowsError) throw ledgerRowsError
 
-      const outstanding = (ledgerRows ?? []).reduce((sum: number, row: any) => {
+      const directOutstanding = (ledgerRows ?? []).reduce((sum: number, row: any) => {
+        if (row.status !== 'posted') {
+          return sum
+        }
+
         const amount = Number(row.drinks)
         if (!Number.isFinite(amount)) {
           return sum
@@ -4526,7 +4530,36 @@ export async function mutateAppState(actor: RequestActor, action: string, payloa
         return sum
       }, 0)
 
-      if (drinks - outstanding > 0.0001) {
+      const netByMembershipId = new Map<string, number>()
+
+      ;(ledgerRows ?? []).forEach((row: any) => {
+        if (row.status !== 'posted') {
+          return
+        }
+
+        const amount = Number(row.drinks)
+        if (!Number.isFinite(amount) || amount <= 0) {
+          return
+        }
+
+        if (row.event_type === 'manual_settlement') {
+          netByMembershipId.set(row.from_membership_id, (netByMembershipId.get(row.from_membership_id) ?? 0) + amount)
+          netByMembershipId.set(row.to_membership_id, (netByMembershipId.get(row.to_membership_id) ?? 0) - amount)
+          return
+        }
+
+        netByMembershipId.set(row.from_membership_id, (netByMembershipId.get(row.from_membership_id) ?? 0) - amount)
+        netByMembershipId.set(row.to_membership_id, (netByMembershipId.get(row.to_membership_id) ?? 0) + amount)
+      })
+
+      const fromNet = netByMembershipId.get(fromMembershipId) ?? 0
+      const toNet = netByMembershipId.get(toMembershipId) ?? 0
+      const optimizedOutstanding = fromNet < 0 && toNet > 0
+        ? Math.min(-fromNet, toNet)
+        : 0
+      const settlementLimit = Math.max(directOutstanding, optimizedOutstanding)
+
+      if (drinks - settlementLimit > 0.0001) {
         throw new Error('Settlement amount cannot exceed the balance that is still owed.')
       }
 

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { ArrowRight, Check, Clock, Minus, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatDrinks, type LedgerEntry, type User } from '@/lib/store'
+import { formatDrinks, simplifyLedgerEntries, type LedgerEntry, type User } from '@/lib/store'
 import { useCurrentUser } from '@/lib/current-user'
 import { Button } from '@/components/ui/button'
 import {
@@ -42,76 +42,56 @@ export function LedgerScreen({ tonightLedger, allTimeLedger, onSettle }: LedgerS
   const [settlementAmount, setSettlementAmount] = useState(1)
 
   const relationships = useMemo(() => {
-    const buckets = new Map<string, {
+    const directBuckets = new Map<string, {
       user: User
-      incomingDrinks: number
       incomingSettled: number
-      outgoingDrinks: number
       outgoingSettled: number
     }>()
 
     ledger.forEach((entry) => {
       if (entry.toUser.id === currentUser.id) {
         const key = entry.fromUser.id
-        const bucket = buckets.get(key) ?? {
+        const bucket = directBuckets.get(key) ?? {
           user: entry.fromUser,
-          incomingDrinks: 0,
           incomingSettled: 0,
-          outgoingDrinks: 0,
           outgoingSettled: 0,
         }
-        bucket.incomingDrinks += entry.drinks
         bucket.incomingSettled += entry.settled
-        buckets.set(key, bucket)
+        directBuckets.set(key, bucket)
       }
 
       if (entry.fromUser.id === currentUser.id) {
         const key = entry.toUser.id
-        const bucket = buckets.get(key) ?? {
+        const bucket = directBuckets.get(key) ?? {
           user: entry.toUser,
-          incomingDrinks: 0,
           incomingSettled: 0,
-          outgoingDrinks: 0,
           outgoingSettled: 0,
         }
-        bucket.outgoingDrinks += entry.drinks
         bucket.outgoingSettled += entry.settled
-        buckets.set(key, bucket)
+        directBuckets.set(key, bucket)
       }
     })
 
-    return [...buckets.values()]
-      .map((bucket) => {
-        const incomingOutstanding = Math.max(0, bucket.incomingDrinks - bucket.incomingSettled)
-        const outgoingOutstanding = Math.max(0, bucket.outgoingDrinks - bucket.outgoingSettled)
-        const balance = incomingOutstanding - outgoingOutstanding
-
-        if (balance > 0) {
+    return simplifyLedgerEntries(ledger)
+      .map((entry) => {
+        if (entry.toUser.id === currentUser.id) {
+          const bucket = directBuckets.get(entry.fromUser.id)
           return {
-            user: bucket.user,
-            entry: {
-              fromUser: bucket.user,
-              toUser: currentUser,
-              drinks: bucket.incomingDrinks,
-              settled: bucket.incomingSettled,
-            },
-            balance,
-            settled: bucket.incomingSettled,
+            user: entry.fromUser,
+            entry,
+            balance: entry.drinks,
+            settled: bucket?.incomingSettled ?? 0,
             direction: 'owed' as const,
           }
         }
 
-        if (balance < 0) {
+        if (entry.fromUser.id === currentUser.id) {
+          const bucket = directBuckets.get(entry.toUser.id)
           return {
-            user: bucket.user,
-            entry: {
-              fromUser: currentUser,
-              toUser: bucket.user,
-              drinks: bucket.outgoingDrinks,
-              settled: bucket.outgoingSettled,
-            },
-            balance,
-            settled: bucket.outgoingSettled,
+            user: entry.toUser,
+            entry,
+            balance: -entry.drinks,
+            settled: bucket?.outgoingSettled ?? 0,
             direction: 'owing' as const,
           }
         }
@@ -119,6 +99,14 @@ export function LedgerScreen({ tonightLedger, allTimeLedger, onSettle }: LedgerS
         return null
       })
       .filter((entry): entry is RelationshipEntry => Boolean(entry))
+      .sort((a, b) => {
+        const balanceDiff = Math.abs(b.balance) - Math.abs(a.balance)
+        if (balanceDiff !== 0) {
+          return balanceDiff
+        }
+
+        return a.user.name.localeCompare(b.user.name)
+      })
   }, [ledger, currentUser])
 
   const { owed, owing, net } = useMemo(() => {
@@ -212,6 +200,9 @@ export function LedgerScreen({ tonightLedger, allTimeLedger, onSettle }: LedgerS
       {/* Relationships List */}
       <div>
         <h2 className="text-lg font-bold text-foreground uppercase tracking-wide mb-3">Balances</h2>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Repayments are simplified across the crew so chains collapse into the shortest path to settle up.
+        </p>
         <div className="space-y-3">
           {relationships.map((rel) => {
             const isPositive = rel.balance > 0

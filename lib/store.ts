@@ -988,6 +988,78 @@ export function getNetPosition(userId: string, ledger: LedgerEntry[]): number {
   return net
 }
 
+export function simplifyLedgerEntries(entries: LedgerEntry[]): LedgerEntry[] {
+  const usersById = new Map<string, User>()
+  const netByUserId = new Map<string, number>()
+
+  for (const entry of entries) {
+    usersById.set(entry.fromUser.id, entry.fromUser)
+    usersById.set(entry.toUser.id, entry.toUser)
+
+    const netCents = toCents(entry.drinks) - toCents(entry.settled)
+    if (netCents === 0) {
+      continue
+    }
+
+    netByUserId.set(entry.fromUser.id, (netByUserId.get(entry.fromUser.id) ?? 0) - netCents)
+    netByUserId.set(entry.toUser.id, (netByUserId.get(entry.toUser.id) ?? 0) + netCents)
+  }
+
+  const creditors = [...netByUserId.entries()]
+    .filter(([, amount]) => amount > 0)
+    .map(([userId, amount]) => ({ user: usersById.get(userId)!, amount }))
+    .sort((a, b) => {
+      if (b.amount !== a.amount) {
+        return b.amount - a.amount
+      }
+
+      return a.user.id.localeCompare(b.user.id)
+    })
+
+  const debtors = [...netByUserId.entries()]
+    .filter(([, amount]) => amount < 0)
+    .map(([userId, amount]) => ({ user: usersById.get(userId)!, amount: Math.abs(amount) }))
+    .sort((a, b) => {
+      if (b.amount !== a.amount) {
+        return b.amount - a.amount
+      }
+
+      return a.user.id.localeCompare(b.user.id)
+    })
+
+  const simplified: LedgerEntry[] = []
+  let creditorIndex = 0
+  let debtorIndex = 0
+
+  while (creditorIndex < creditors.length && debtorIndex < debtors.length) {
+    const creditor = creditors[creditorIndex]
+    const debtor = debtors[debtorIndex]
+    const settledAmount = Math.min(creditor.amount, debtor.amount)
+
+    if (settledAmount > 0) {
+      simplified.push({
+        fromUser: debtor.user,
+        toUser: creditor.user,
+        drinks: fromCents(settledAmount),
+        settled: 0,
+      })
+    }
+
+    creditor.amount -= settledAmount
+    debtor.amount -= settledAmount
+
+    if (creditor.amount === 0) {
+      creditorIndex += 1
+    }
+
+    if (debtor.amount === 0) {
+      debtorIndex += 1
+    }
+  }
+
+  return simplified
+}
+
 // Session state
 export interface Session {
   user: User | null

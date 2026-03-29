@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { BEER_BOMB_BOARD_SIZE, getCrewMemberMembershipId } from '@/lib/store'
+import { BEER_BOMB_BOARD_SIZE, getCrewMemberMembershipId, simplifyLedgerEntries } from '@/lib/store'
 import { getServiceRoleClient } from '@/lib/server/supabase'
 import { joinCrewAsGuest, loadAppState, mutateAppState } from '@/lib/server/repository'
 import { ageDispute, createCrewWithNight, makeAuthenticatedActor, resetDatabase } from '../helpers/backend-fixtures'
@@ -265,6 +265,58 @@ describe('persistent backend contract', () => {
 
     expect(settlementEdge?.drinks).toBe(1)
     expect(settlementEdge?.settled).toBe(0.5)
+  }, 30000)
+
+  it('allows settling directly with the final creditor from the simplified debt graph', async () => {
+    const { creator, crew, night } = await createCrewWithNight('Optimized Settlement')
+    const middleActor = makeAuthenticatedActor('Middle Player')
+    const finalActor = makeAuthenticatedActor('Final Player')
+
+    await mutateAppState(middleActor, 'joinCrew', { code: crew.inviteCode })
+    await mutateAppState(finalActor, 'joinCrew', { code: crew.inviteCode })
+
+    const joinedState = await loadAppState(creator)
+    const joinedCrew = joinedState.crews.find((entry: any) => entry.id === crew.id)!
+    const creatorMember = joinedCrew.members.find((member: any) => member.role === 'creator')!
+    const middleMember = joinedCrew.members.find((member: any) => member.name === 'Middle Player')!
+    const finalMember = joinedCrew.members.find((member: any) => member.name === 'Final Player')!
+
+    const { error: ledgerInsertError } = await getServiceRoleClient()
+      .from('ledger_events')
+      .insert([
+        {
+          crew_id: crew.id,
+          night_id: night.id,
+          from_membership_id: getCrewMemberMembershipId(creatorMember),
+          to_membership_id: getCrewMemberMembershipId(middleMember),
+          event_type: 'bet_result',
+          drinks: 2,
+        },
+        {
+          crew_id: crew.id,
+          night_id: night.id,
+          from_membership_id: getCrewMemberMembershipId(middleMember),
+          to_membership_id: getCrewMemberMembershipId(finalMember),
+          event_type: 'bet_result',
+          drinks: 2,
+        },
+      ])
+
+    if (ledgerInsertError) throw ledgerInsertError
+
+    await mutateAppState(creator, 'recordSettlement', {
+      crewId: crew.id,
+      toMembershipId: getCrewMemberMembershipId(finalMember),
+      drinks: 1.5,
+    })
+
+    const afterSettlement = await loadAppState(creator)
+    const simplified = simplifyLedgerEntries(afterSettlement.crewDataById[crew.id].allTimeLedger)
+
+    expect(simplified).toHaveLength(1)
+    expect(getCrewMemberMembershipId(simplified[0].fromUser)).toBe(getCrewMemberMembershipId(creatorMember))
+    expect(getCrewMemberMembershipId(simplified[0].toUser)).toBe(getCrewMemberMembershipId(finalMember))
+    expect(simplified[0].drinks).toBe(0.5)
   }, 30000)
 
   it('does not rewrite profile preferences on repeated bootstrap loads', async () => {

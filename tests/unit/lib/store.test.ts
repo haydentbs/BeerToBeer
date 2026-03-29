@@ -9,6 +9,7 @@ import {
   placeOrUpdateBetWager,
   projectBetPayout,
   resolveBetWithParimutuel,
+  simplifyLedgerEntries,
   type Bet,
   type MiniGameMatch,
 } from '@/lib/store'
@@ -130,6 +131,29 @@ describe('store wagering helpers', () => {
     expect(profits.bob).toBe(0.16)
     expect(profits.cara).toBe(0.16)
     expect(profits.creator).toBe(-0.5)
+  })
+
+  it('simplifies chained debts into a direct repayment', () => {
+    expect(
+      simplifyLedgerEntries([
+        { fromUser: alice, toUser: bob, drinks: 2, settled: 0 },
+        { fromUser: bob, toUser: cara, drinks: 2, settled: 0 },
+      ])
+    ).toEqual([
+      { fromUser: alice, toUser: cara, drinks: 2, settled: 0 },
+    ])
+  })
+
+  it('accounts for manual settlements before simplifying', () => {
+    expect(
+      simplifyLedgerEntries([
+        { fromUser: alice, toUser: bob, drinks: 2, settled: 0 },
+        { fromUser: bob, toUser: cara, drinks: 2, settled: 0 },
+        { fromUser: alice, toUser: cara, drinks: 0, settled: 1.5 },
+      ])
+    ).toEqual([
+      { fromUser: alice, toUser: cara, drinks: 0.5, settled: 0 },
+    ])
   })
 })
 
