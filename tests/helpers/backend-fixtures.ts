@@ -47,6 +47,12 @@ const RESET_ROOT_DELETE_PLANS: Array<{ table: string; column?: string }> = [
   // Most test data hangs off these roots via `on delete cascade`, so deleting
   // them avoids dozens of slow sequential PostgREST delete round trips.
   { table: 'audit_log' },
+  { table: 'dispute_votes' },
+  { table: 'disputes' },
+  { table: 'settlement_confirmations' },
+  { table: 'settlement_requests' },
+  { table: 'mini_game_match_events' },
+  { table: 'mini_game_matches' },
   { table: 'crews' },
   { table: 'guest_identities' },
   { table: 'profiles' },
