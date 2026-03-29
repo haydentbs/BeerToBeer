@@ -51,10 +51,12 @@ export default function CrewLayout({
     crewDataById,
     crewNetPositions,
     notifications,
+    claimableGuests,
     setActiveCrewId,
     handleLeaveCrew,
     handleSignOut,
     handleFinishAccount,
+    handleClaimGuest,
     handleOpenProfile,
     handleUpdateName,
     handleMarkNotificationsRead,
@@ -77,6 +79,7 @@ export default function CrewLayout({
     isMutating,
     isCreatingCrew,
     isJoiningCrew,
+    claimingGuestMembershipId,
   } = useAppState()
 
   // Tell the provider which crew is active
@@ -207,8 +210,11 @@ export default function CrewLayout({
             bestNight: 5.4,
             currentStreak: 2,
           }}
+          claimableGuests={claimableGuests}
+          claimingGuestMembershipId={claimingGuestMembershipId}
           onSignOut={handleSignOut}
           onFinishAccount={session.isGuest ? handleFinishAccount : undefined}
+          onClaimGuest={session.isGuest ? undefined : (guestMembershipId) => { void handleClaimGuest(guestMembershipId) }}
           onUpdateName={handleUpdateName}
           isSigningOut={isSigningOut}
         />

@@ -62,6 +62,7 @@ import {
   respondToMiniGameChallenge,
   takeMiniGameTurn,
 } from '@/lib/client/app-api-v2'
+import type { ClaimableGuest } from '@/lib/server/domain'
 import type { CommandResponse, CrewFeedResponse, CrewSnapshotResponse, SessionResponse } from '@/lib/server/v2/domain'
 
 // ---------------------------------------------------------------------------
@@ -144,6 +145,7 @@ export interface AppStateValue {
   handleDevAuth: (identityId: string) => Promise<AuthActionResult>
   handleSignOut: () => Promise<void>
   handleFinishAccount: () => Promise<void>
+  handleClaimGuest: (guestMembershipId: string) => Promise<boolean>
   handleUpdateName: (name: string) => Promise<void>
   devAuthEnabled: boolean
   supabaseConfigured: boolean
@@ -155,6 +157,7 @@ export interface AppStateValue {
   crewNetPositions: Record<string, number>
   crewDataById: Record<string, { tonightLedger: LedgerEntry[]; allTimeLedger: LedgerEntry[]; leaderboard: LeaderboardEntry[] }>
   notifications: Notification[]
+  claimableGuests: ClaimableGuest[]
 
   // Active crew management
   activeCrewId: string | null
@@ -216,6 +219,7 @@ export interface AppStateValue {
   isMutating: boolean
   mutationError: string | null
   setMutationError: (error: string | null) => void
+  claimingGuestMembershipId: string | null
 
   // Settle
   handleSettle: (entry: LedgerEntry, drinks: number) => void
@@ -332,6 +336,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [crewDataById, setCrewDataById] = useState<Record<string, { tonightLedger: LedgerEntry[]; allTimeLedger: LedgerEntry[]; leaderboard: LeaderboardEntry[] }>>({})
   const [crewCursorById, setCrewCursorById] = useState<Record<string, number>>({})
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [claimableGuests, setClaimableGuests] = useState<ClaimableGuest[]>([])
   const [pendingCrewThemeById, setPendingCrewThemeById] = useState<Record<string, DrinkTheme>>({})
   const [isAuthReady, setIsAuthReady] = useState(false)
   const [isDataReady, setIsDataReady] = useState(false)
@@ -344,6 +349,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [isJoiningCrew, setIsJoiningCrew] = useState(false)
   const [mutationError, setMutationError] = useState<string | null>(null)
   const [authNotice, setAuthNotice] = useState<string | null>(null)
+  const [claimingGuestMembershipId, setClaimingGuestMembershipId] = useState<string | null>(null)
+  const [isPendingGuestClaimInFlight, setIsPendingGuestClaimInFlight] = useState(false)
 
   // Modal state
   const [showCreateBet, setShowCreateBet] = useState(false)
@@ -355,6 +362,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const isRealtimeSnapshotInFlightRef = useRef(false)
   const isForegroundRefreshInFlightRef = useRef(false)
   const lastForegroundRefreshAtRef = useRef(0)
+  const pendingGuestClaimMembershipIdRef = useRef<string | null>(null)
   const applySessionPayloadRef = useRef<(payload: SessionResponse) => void>(() => {})
   const applyCrewSnapshotRef = useRef<(payload: CrewSnapshotResponse) => void>(() => {})
   const applyCommandPayloadRef = useRef<(payload: CommandResponse | CrewFeedResponse) => void>(() => {})
@@ -415,6 +423,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     })
     setCrewNetPositions(payload.crewNetPositions ?? {})
     setNotifications(payload.notifications ?? [])
+    setClaimableGuests(payload.claimableGuests ?? [])
     applyViewerUser(payload.actor ?? null)
   }, [applyViewerUser])
 
@@ -491,15 +500,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setCrewDataById({})
       setCrewCursorById({})
       setNotifications([])
+      setClaimableGuests([])
       setPendingCrewThemeById({})
       setShowCreateBet(false)
       setShowProfile(false)
       setSelectedBetId(null)
       setSelectedBeerBombMatchId(null)
       setActiveCrewId(null)
+      setClaimingGuestMembershipId(null)
+      setIsPendingGuestClaimInFlight(false)
+      pendingGuestClaimMembershipIdRef.current = null
       return
     }
     setSession(buildAppSession(authUser))
+    setClaimableGuests([])
+    setClaimingGuestMembershipId(null)
     setPendingCrewThemeById({})
   }, [])
 
@@ -633,6 +648,68 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
   }, [applyAuthenticatedUser, devAuthEnabled, supabaseConfigured])
 
+  useEffect(() => {
+    if (!session || session.isGuest || !getPendingGuestClaimFlag()) {
+      setIsPendingGuestClaimInFlight(false)
+      return
+    }
+
+    const guestSession = readGuestSessionCookie()
+    const guestMembershipId = guestSession?.membershipId ?? null
+    const guestIdentityId = guestSession?.guestIdentityId ?? null
+
+    if (!guestMembershipId || !guestIdentityId) {
+      setPendingGuestClaimFlag(false)
+      pendingGuestClaimMembershipIdRef.current = null
+      return
+    }
+
+    if (pendingGuestClaimMembershipIdRef.current === guestMembershipId) {
+      return
+    }
+
+    pendingGuestClaimMembershipIdRef.current = guestMembershipId
+
+    let cancelled = false
+
+    setIsPendingGuestClaimInFlight(true)
+    setIsDataReady(false)
+    setClaimingGuestMembershipId(guestMembershipId)
+    setLoadingCopy({
+      message: 'Claiming your guest history…',
+      submessage: 'Keeping your crews and stats together',
+    })
+
+    void mutateApp('claimGuestMembership', {
+      guestMembershipId,
+      guestIdentityId,
+      source: 'guest-upgrade',
+    })
+      .then((payload) => {
+        if (cancelled) return
+        applyCommandPayloadRef.current(payload)
+        clearGuestSessionCookie()
+        setPendingGuestClaimFlag(false)
+        setAuthNotice(null)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setPendingGuestClaimFlag(false)
+        setAuthNotice(error instanceof Error ? error.message : 'Could not claim your guest history yet.')
+      })
+      .finally(() => {
+        if (cancelled) return
+        setIsPendingGuestClaimInFlight(false)
+        setClaimingGuestMembershipId((current) => current === guestMembershipId ? null : current)
+        setLoadingCopy(null)
+        pendingGuestClaimMembershipIdRef.current = null
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [sessionLoadKey])
+
   // -------------------------------------------------------------------------
   // Data loading
   // -------------------------------------------------------------------------
@@ -644,6 +721,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!session) {
       setIsDataReady(true)
+      return
+    }
+
+    if (isPendingGuestClaimInFlight) {
+      setIsDataReady(false)
       return
     }
 
@@ -672,7 +754,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
     void loadState()
     return () => { cancelled = true }
-  }, [sessionLoadKey])
+  }, [isPendingGuestClaimInFlight, sessionLoadKey])
 
   // Load crew snapshot when active crew changes
   useEffect(() => {
@@ -1109,6 +1191,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const handleFinishAccount = async () => {
     await handleGoogleAuth({ preserveGuestSession: true })
+  }
+
+  const handleClaimGuest = async (guestMembershipId: string) => {
+    const guest = claimableGuests.find((entry) => entry.guestMembershipId === guestMembershipId)
+    setClaimingGuestMembershipId(guestMembershipId)
+    const didClaim = await runMutation(async () => {
+      const payload = await mutateApp('claimGuestMembership', {
+        guestMembershipId,
+        guestIdentityId: guest?.guestIdentityId,
+        source: 'manual-claim',
+      })
+      applyCommandPayload(payload)
+    }, 'Could not claim this guest history.')
+    setClaimingGuestMembershipId((current) => current === guestMembershipId ? null : current)
+    return didClaim
   }
 
   const handleUpdateName = async (name: string) => {
@@ -1577,6 +1674,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     handleDevAuth,
     handleSignOut,
     handleFinishAccount,
+    handleClaimGuest,
     handleUpdateName,
     devAuthEnabled,
     supabaseConfigured,
@@ -1586,6 +1684,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     crewNetPositions,
     crewDataById,
     notifications,
+    claimableGuests,
     activeCrewId,
     setActiveCrewId,
     handleCreateCrew,
@@ -1631,6 +1730,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     isMutating,
     mutationError,
     setMutationError,
+    claimingGuestMembershipId,
     handleSettle,
     showDevBattleSandbox: devAuthEnabled && session?.provider === 'dev',
     handleCreateDevBattleSandbox,
@@ -1651,6 +1751,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     crewNetPositions,
     crewDataById,
     notifications,
+    claimableGuests,
     activeCrewId,
     isCreatingCrew,
     isJoiningCrew,
@@ -1660,6 +1761,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     selectedBeerBombMatchId,
     isMutating,
     mutationError,
+    claimingGuestMembershipId,
     handleOpenNotification,
     clearRestorableModalState,
     applyCommandPayload,

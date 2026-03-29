@@ -73,4 +73,49 @@ describe('ProfileModal', () => {
 
     expect(screen.getByRole('button', { name: /create your account/i })).toBeInTheDocument()
   })
+
+  it('renders claimable guest rows and fires the claim callback', async () => {
+    const user = userEvent.setup()
+    const onClaimGuest = vi.fn()
+
+    render(
+      <SettleUpThemeProvider>
+        <ProfileModal
+          isOpen
+          onClose={vi.fn()}
+          userName="Taylor Account"
+          userInitials="TA"
+          crews={[{ name: 'The Regulars', netPosition: 1 }]}
+          stats={{
+            totalBetsPlaced: 4,
+            totalWins: 2,
+            winRate: 0.5,
+            totalDrinksWon: 3,
+            totalDrinksLost: 2,
+            bestNight: 2,
+            currentStreak: 1,
+          }}
+          claimableGuests={[
+            {
+              guestMembershipId: 'guest-membership-1',
+              guestIdentityId: 'guest-identity-1',
+              guestName: 'Taylor Alias',
+              crewId: 'crew-1',
+              crewName: 'The Regulars',
+              status: 'active',
+              joinedAt: '2026-03-29T12:00:00.000Z',
+            },
+          ]}
+          onClaimGuest={onClaimGuest}
+        />
+      </SettleUpThemeProvider>
+    )
+
+    expect(screen.getByText('Claim guest stats')).toBeInTheDocument()
+    expect(screen.getByText('Taylor Alias')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Claim' }))
+
+    expect(onClaimGuest).toHaveBeenCalledWith('guest-membership-1')
+  })
 })

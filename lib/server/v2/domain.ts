@@ -1,5 +1,5 @@
 import type { AppSession } from '@/lib/auth'
-import type { CrewDataBundle } from '@/lib/server/domain'
+import type { ClaimableGuest, CrewDataBundle } from '@/lib/server/domain'
 import type { Crew, Notification, User } from '@/lib/store'
 
 export interface SessionResponse {
@@ -7,6 +7,7 @@ export interface SessionResponse {
   crews: Crew[]
   crewNetPositions: Record<string, number>
   notifications: Notification[]
+  claimableGuests?: ClaimableGuest[]
   unreadCount: number
   defaultCrewId: string | null
 }

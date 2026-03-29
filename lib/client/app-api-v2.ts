@@ -275,6 +275,15 @@ export async function mutateApp(action: string, payload: Record<string, any>) {
         method: 'PATCH',
         body: JSON.stringify({ name: payload.name }),
       }))
+    case 'claimGuestMembership':
+      return reviveCommandResponse(await apiFetch<CommandResponse>('/api/v2/profile/claim-guest', {
+        method: 'POST',
+        body: JSON.stringify({
+          guestMembershipId: payload.guestMembershipId,
+          guestIdentityId: payload.guestIdentityId,
+          source: payload.source,
+        }),
+      }))
     default:
       throw new Error(`Unsupported V2 action: ${action}`)
   }

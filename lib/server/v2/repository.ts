@@ -1,7 +1,7 @@
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import type { AppSession } from '@/lib/auth'
 import { getInitials } from '@/lib/utils'
-import type { CrewDataBundle } from '@/lib/server/domain'
+import type { ClaimableGuest, CrewDataBundle } from '@/lib/server/domain'
 import {
   joinCrewAsGuest,
   loadAppState,
@@ -23,7 +23,7 @@ import type {
 
 const PROFILE_SELECT = 'id, auth_user_id, email, display_name, avatar_url, initials, created_at, updated_at'
 const PROFILE_VIEWER_SELECT = 'id, email, display_name, avatar_url, initials'
-const GUEST_IDENTITY_SELECT = 'id, display_name, initials, created_at, updated_at'
+const GUEST_IDENTITY_SELECT = 'id, display_name, initials, upgraded_to_profile_id, created_at, updated_at'
 const CREW_MEMBERSHIP_SELECT = 'id, crew_id, actor_type, profile_id, guest_identity_id, role, status, joined_at, left_at, created_at, updated_at'
 const CREW_MEMBERSHIP_WITH_ACTOR_SELECT =
   `${CREW_MEMBERSHIP_SELECT}, profiles(${PROFILE_VIEWER_SELECT}), guest_identities(${GUEST_IDENTITY_SELECT})`
@@ -483,6 +483,7 @@ async function buildSessionResponseForActor(actor: RequestActor): Promise<Sessio
       crews: [],
       crewNetPositions: {},
       notifications: [],
+      claimableGuests: [],
       unreadCount: 0,
       defaultCrewId: null,
     }
@@ -493,6 +494,7 @@ async function buildSessionResponseForActor(actor: RequestActor): Promise<Sessio
     activeNightResult,
     pastNightResult,
     membershipResult,
+    claimableGuestResult,
     balanceResult,
     notificationRows,
   ] = await Promise.all([
@@ -518,6 +520,13 @@ async function buildSessionResponseForActor(actor: RequestActor): Promise<Sessio
       .select(CREW_MEMBERSHIP_WITH_ACTOR_SELECT)
       .in('crew_id', context.crewIds)
       .eq('status', 'active'),
+    context.profile
+      ? supabase
+          .from('crew_memberships')
+          .select(`${CREW_MEMBERSHIP_SELECT}, guest_identities(${GUEST_IDENTITY_SELECT})`)
+          .in('crew_id', context.crewIds)
+          .eq('actor_type', 'guest')
+      : Promise.resolve({ data: [], error: null }),
     supabase
       .from('crew_balances_v')
       .select('crew_id, from_membership_id, to_membership_id, outstanding')
@@ -529,6 +538,7 @@ async function buildSessionResponseForActor(actor: RequestActor): Promise<Sessio
   if (activeNightResult.error) throw activeNightResult.error
   if (pastNightResult.error) throw pastNightResult.error
   if (membershipResult.error) throw membershipResult.error
+  if (claimableGuestResult.error) throw claimableGuestResult.error
   if (balanceResult.error) throw balanceResult.error
 
   const crewRows = crewResult.data ?? []
@@ -597,6 +607,25 @@ async function buildSessionResponseForActor(actor: RequestActor): Promise<Sessio
   })
 
   const notifications = notificationRows.map((row: any) => mapNotificationRow(row, crewNameById))
+  const claimableGuests: ClaimableGuest[] = context.profile
+    ? (claimableGuestResult.data ?? [])
+        .filter((membership: any) => {
+          const guestIdentity = unwrapRelation(membership.guest_identities)
+          return !guestIdentity?.upgraded_to_profile_id
+        })
+        .map((membership: any) => {
+          const guestIdentity = unwrapRelation(membership.guest_identities)
+          return {
+            guestMembershipId: membership.id,
+            guestIdentityId: membership.guest_identity_id,
+            guestName: guestIdentity?.display_name ?? 'Guest',
+            crewId: membership.crew_id,
+            crewName: crewNameById.get(membership.crew_id) ?? 'SettleUp',
+            status: membership.status,
+            joinedAt: asDate(membership.joined_at).toISOString(),
+          }
+        })
+    : []
 
   const crews = crewRows
     .map((row: any) => {
@@ -639,6 +668,7 @@ async function buildSessionResponseForActor(actor: RequestActor): Promise<Sessio
     crews,
     crewNetPositions,
     notifications,
+    claimableGuests,
     unreadCount: notifications.filter((notification) => !notification.read).length,
     defaultCrewId: crews.find((crew) => crew.currentNight)?.id ?? crews[0]?.id ?? null,
   }
